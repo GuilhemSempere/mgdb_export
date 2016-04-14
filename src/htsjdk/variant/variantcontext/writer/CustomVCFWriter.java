@@ -1,7 +1,7 @@
 /*******************************************************************************
  * MGDB Export - Mongo Genotype DataBase, export handlers
  * Copyright (C) 2016 <South Green>
- *     
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 3 as
  * published by the Free Software Foundation.
@@ -42,11 +42,10 @@ import htsjdk.variant.vcf.VCFInfoHeaderLine;
 
 import org.broadinstitute.gatk.utils.exceptions.UserException;
 
-// TODO: Auto-generated Javadoc
 /**
  * This class is pretty much a clone of GATK's org.broadinstitute.sting.utils.variantcontext.writer.VCFWriter.
  * It was added in order to be able to force the default locale (en_US) to be used when formatting numbers (methods formatVCFDouble & formatQualValue)
- * 
+ *
  * @author SEMPERE
  */
 public class CustomVCFWriter extends IndexingVariantContextWriter
@@ -398,7 +397,7 @@ public class CustomVCFWriter extends IndexingVariantContextWriter
                         throw new Error("GTs cannot be missing for some samples if they are available for others in the record");
                     writeAllele(g.getAllele(0), alleleMap);
                     int i = 1;
-                    while(i < g.getPloidy()) 
+                    while(i < g.getPloidy())
                     {
                         mWriter.write(g.isPhased() ? "|" : "/");
                         writeAllele(g.getAllele(i), alleleMap);
@@ -462,7 +461,7 @@ public class CustomVCFWriter extends IndexingVariantContextWriter
                 attrs.remove(i);
 
             i = 0;
-            while(i < attrs.size()) 
+            while(i < attrs.size())
             {
                 if(i > 0 || genotypeFormatKeys.contains("GT"))
                     mWriter.write(":");
@@ -667,29 +666,29 @@ public class CustomVCFWriter extends IndexingVariantContextWriter
 
     /** The Constant VERSION_LINE. */
     private static final String VERSION_LINE;
-    
+
     /** The writer. */
     protected final BufferedWriter mWriter = new BufferedWriter(new OutputStreamWriter(getOutputStream()));
-    
+
     /** The do not write genotypes. */
     protected final boolean doNotWriteGenotypes;
-    
+
     /** The vcf header. */
     protected VCFHeader mHeader;
-    
+
     /** The allow missing fields in header. */
     private final boolean allowMissingFieldsInHeader;
-    
+
     /** The int genotype field accessors. */
     private IntGenotypeFieldAccessors intGenotypeFieldAccessors;
-    
+
     /** The Constant QUAL_FORMAT_STRING. */
     private static final String QUAL_FORMAT_STRING = "%.2f";
-    
+
     /** The Constant QUAL_FORMAT_EXTENSION_TO_TRIM. */
     private static final String QUAL_FORMAT_EXTENSION_TO_TRIM = ".00";
 
-    static 
+    static
     {
         VERSION_LINE = (new StringBuilder()).append("##").append(VCFHeaderVersion.VCF4_1.getFormatString()).append("=").append(VCFHeaderVersion.VCF4_1.getVersionString()).toString();
     }

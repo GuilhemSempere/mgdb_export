@@ -1,7 +1,7 @@
 /*******************************************************************************
  * MGDB Export - Mongo Genotype DataBase, export handlers
  * Copyright (C) 2016 <South Green>
- *     
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 3 as
  * published by the Free Software Foundation.
@@ -51,7 +51,6 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import com.mongodb.DBCursor;
 import com.mongodb.DBObject;
 
-// TODO: Auto-generated Javadoc
 /**
  * The Class EigenstratExportHandler.
  */
@@ -59,13 +58,13 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 
 	/** The Constant LOG. */
 	private static final Logger LOG = Logger.getLogger(EigenstratExportHandler.class);
-	
+
 	/** The Constant EIGENSTRAT_FORMAT. */
 	public static final String EIGENSTRAT_FORMAT = "EIGENSTRAT";
 
 	/** The supported variant types. */
 	private static List<String> supportedVariantTypes;
-	
+
 	static
 	{
 		supportedVariantTypes = new ArrayList<String>();
@@ -82,7 +81,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 	protected String getIndividualGenderCode(String sModule, String individual) {
 		return "U";
 	}
-	
+
 	/**
 	 * Gets the populations from samples.
 	 *
@@ -98,7 +97,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 			result.add(individual.getPopulation());
 		return result;
 	}
-	
+
 	/* (non-Javadoc)
 	 * @see fr.cirad.mgdb.exporting.IExportHandler#getExportFormatName()
 	 */
@@ -144,20 +143,20 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 		File warningFile = File.createTempFile("export_warnings_", "");
 		FileWriter warningFileWriter = new FileWriter(warningFile);
 		File snpFile = null;
-		
+
 		try
 		{
 			snpFile = File.createTempFile("snpFile", "");
 			FileWriter snpFileWriter = new FileWriter(snpFile);
-			
+
 			ZipOutputStream zos = new ZipOutputStream(outputStream);
 			if (ByteArrayOutputStream.class.isAssignableFrom(outputStream.getClass()))
 				zos.setLevel(ZipOutputStream.STORED);
-	
+
 			if (readyToExportFiles != null)
 				for (String readyToExportFile : readyToExportFiles.keySet())
 				{
-					zos.putNextEntry(new ZipEntry(readyToExportFile));			
+					zos.putNextEntry(new ZipEntry(readyToExportFile));
 					InputStream inputStream = readyToExportFiles.get(readyToExportFile);
 					byte[] dataBlock = new byte[1024];
 					int count = inputStream.read(dataBlock, 0, 1024);
@@ -166,15 +165,15 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 					    count = inputStream.read(dataBlock, 0, 1024);
 					}
 				}
-			
+
 			MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
 			int markerCount = markerCursor.count();
-	
+
 			List<Individual> individuals = getIndividualsFromSamples(sModule, sampleIDs);
-	
+
 			ArrayList<String> individualList = new ArrayList<String>();
 			StringBuffer indFileContents = new StringBuffer();
-	
+
 			for (int i = 0; i < sampleIDs.size(); i++) {
 				Individual individual = individuals.get(i);
 				if (!individualList.contains(individual.getId())) {
@@ -182,18 +181,18 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 					indFileContents.append(individual.getId() + "\t" + getIndividualGenderCode(sModule, individual.getId()) + "\t" + (individual.getPopulation() == null ? "." : individual.getPopulation()) + LINE_SEPARATOR);
 				}
 			}
-	
+
 			String exportName = sModule + "_" + markerCount + "variants_" + individualList.size() + "individuals";
 			zos.putNextEntry(new ZipEntry(exportName + ".ind"));
 			zos.write(indFileContents.toString().getBytes());
-	
+
 			zos.putNextEntry(new ZipEntry(exportName + ".eigenstratgeno"));
-			
+
 			int avgObjSize = (Integer) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
-			int nChunkSize = nMaxChunkSizeInMb*1024*1024 / avgObjSize;		
-			short nProgress = 0, nPreviousProgress = 0;	
+			int nChunkSize = nMaxChunkSizeInMb*1024*1024 / avgObjSize;
+			short nProgress = 0, nPreviousProgress = 0;
 			long nLoadedMarkerCount = 0;
-			
+
 			while (markerCursor.hasNext())
 			{
 				int nLoadedMarkerCountInLoop = 0;
@@ -207,13 +206,13 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 					nLoadedMarkerCountInLoop++;
 					fStartingNewChunk = false;
 				}
-	
+
 				List<Comparable> currentMarkers = new ArrayList<Comparable>(markerChromosomalPositions.keySet());
-				LinkedHashMap<VariantData, Collection<VariantRunData>> variantsAndRuns = MgdbDao.getSampleGenotypes(mongoTemplate, sampleIDs, currentMarkers, true, null /*new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_SEQUENCE).and(new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_START_SITE))*/);	// query mongo db for matching genotypes			
+				LinkedHashMap<VariantData, Collection<VariantRunData>> variantsAndRuns = MgdbDao.getSampleGenotypes(mongoTemplate, sampleIDs, currentMarkers, true, null /*new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_SEQUENCE).and(new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_START_SITE))*/);	// query mongo db for matching genotypes
 				for (VariantData variant : variantsAndRuns.keySet()) // read data and write results into temporary files (one per sample)
 				{
 					Comparable variantId = variant.getId();
-	
+
 					List<String> chromAndPos = Helper.split(markerChromosomalPositions.get(variantId), ":");
 					if (chromAndPos.size() == 0)
 						LOG.warn("Chromosomal position not found for marker " + variantId);
@@ -225,7 +224,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 		        			variantId = syn;
 		        	}
 		        	snpFileWriter.write(variantId + "\t" + (chromAndPos.size() == 0 ? "0" : chromAndPos.get(0)) + "\t" + 0 + "\t" + (chromAndPos.size() == 0 ? 0l : Long.parseLong(chromAndPos.get(1))) + LINE_SEPARATOR);
-	
+
 					Map<String, List<String>> individualGenotypes = new LinkedHashMap<String, List<String>>();
 					Collection<VariantRunData> runs = variantsAndRuns.get(variant);
 					if (runs != null)
@@ -233,7 +232,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 							for (Integer sampleIndex : run.getSampleGenotypes().keySet()) {
 								SampleGenotype sampleGenotype = run.getSampleGenotypes().get(sampleIndex);
 								String individualId = individuals.get(sampleIDs.indexOf(new SampleId(run.getId().getProjectId(), sampleIndex))).getId();
-								
+
 								Integer gq = null;
 								try
 								{
@@ -243,7 +242,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 								{}
 								if (gq != null && gq < nMinimumGenotypeQuality)
 									continue;
-								
+
 								Integer dp = null;
 								try
 								{
@@ -253,7 +252,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 								{}
 								if (dp != null && dp < nMinimumReadDepth)
 									continue;
-	
+
 								String gtCode = sampleGenotype.getCode();
 								List<String> storedIndividualGenotypes = individualGenotypes.get(individualId);
 								if (storedIndividualGenotypes == null) {
@@ -262,7 +261,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 								}
 								storedIndividualGenotypes.add(gtCode);
 							}
-	
+
 					for (int j=0; j<individualList.size(); j++ /* we use this list because it has the proper ordering*/)
 					{
 						String individualId = individualList.get(j);
@@ -274,7 +273,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 							for (String genotype : genotypes) {
 								if (genotype.length() == 0)
 									continue; /* skip missing genotypes */
-	
+
 								int gtCount = 1 + MgdbDao.getCountForKey(genotypeCounts, genotype);
 								if (gtCount > highestGenotypeCount) {
 									highestGenotypeCount = gtCount;
@@ -282,9 +281,9 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 								}
 								genotypeCounts.put(genotype, gtCount);
 							}
-	
+
 						List<String> alleles = mostFrequentGenotype == null ? new ArrayList<String>() : variant.getAllelesFromGenotypeCode(mostFrequentGenotype);
-	
+
 						int nOutputCode = 0;
 						if (mostFrequentGenotype == null)
 							nOutputCode = 9;
@@ -295,7 +294,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 						if (j == 0 && variant.getKnownAlleleList().size() > 2)
 							warningFileWriter.write("- Variant " + variant.getId() + " is multi-allelic. Make sure Eigenstrat genotype encoding specifications are suitable for you.\n");
 						zos.write(("" + nOutputCode).getBytes());
-	
+
 						if (genotypeCounts.size() > 1 || alleles.size() > 2)
 						{
 							if (genotypeCounts.size() > 1)
@@ -306,10 +305,10 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 					}
 					zos.write((LINE_SEPARATOR).getBytes());
 				}
-	
+
 				if (progress.hasAborted())
 					return;
-	
+
 	            nLoadedMarkerCount += nLoadedMarkerCountInLoop;
 				nProgress = (short) (nLoadedMarkerCount * 100 / markerCount);
 				if (nProgress > nPreviousProgress) {
@@ -319,7 +318,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 					nPreviousProgress = nProgress;
 				}
 			}
-			
+
 			snpFileWriter.close();
 			zos.putNextEntry(new ZipEntry(exportName + ".snp"));
 			BufferedReader in = new BufferedReader(new FileReader(snpFile));
@@ -327,7 +326,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 			while ((sLine = in.readLine()) != null)
 				zos.write((sLine + "\n").getBytes());
 			in.close();
-	
+
 			warningFileWriter.close();
 			if (warningFile.length() > 0) {
 				zos.putNextEntry(new ZipEntry(exportName + "-REMARKS.txt"));
@@ -341,7 +340,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 				in.close();
 			}
 			warningFile.delete();
-	
+
 			zos.close();
 			progress.setCurrentStepProgress((short) 100);
 		}

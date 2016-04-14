@@ -1,7 +1,7 @@
 /*******************************************************************************
  * MGDB Export - Mongo Genotype DataBase, export handlers
  * Copyright (C) 2016 <South Green>
- *     
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 3 as
  * published by the Free Software Foundation.
@@ -46,16 +46,15 @@ import fr.cirad.mgdb.model.mongodao.MgdbDao;
 import fr.cirad.tools.ProgressIndicator;
 import fr.cirad.tools.mongo.MongoTemplateManager;
 
-// TODO: Auto-generated Javadoc
 /**
  * The Class DARwinExportHandler.
  */
 public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 {
-	
+
 	/** The Constant LOG. */
 	private static final Logger LOG = Logger.getLogger(DARwinExportHandler.class);
-	
+
 	/* (non-Javadoc)
 	 * @see fr.cirad.mgdb.exporting.IExportHandler#getExportFormatName()
 	 */
@@ -71,7 +70,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 	public String getExportFormatDescription() {
 		return "Exports data in DARwin Format. See <a target='_blank' href='http://darwin.cirad.fr/'>http://darwin.cirad.fr/</a> for more details";
 	}
-	
+
 	/* (non-Javadoc)
 	 * @see fr.cirad.mgdb.exporting.IExportHandler#getStepList()
 	 */
@@ -91,20 +90,20 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 		GenotypingProject aProject = mongoTemplate.findOne(new Query(Criteria.where(GenotypingProject.FIELDNAME_PLOIDY_LEVEL).exists(true)), GenotypingProject.class);
 		if (aProject == null)
 			LOG.warn("Unable to find a project containing ploidy level information! Assuming ploidy level is 2.");
-		
+
 		int ploidy = aProject == null ? 2 : aProject.getPloidyLevel();
-		
+
 		File warningFile = File.createTempFile("export_warnings_", "");
 		FileWriter warningFileWriter = new FileWriter(warningFile);
 
 		int markerCount = markerCursor.count();
-		
+
 		ZipOutputStream zos = new ZipOutputStream(outputStream);
-		
+
 		if (readyToExportFiles != null)
 			for (String readyToExportFile : readyToExportFiles.keySet())
 			{
-				zos.putNextEntry(new ZipEntry(readyToExportFile));			
+				zos.putNextEntry(new ZipEntry(readyToExportFile));
 				InputStream inputStream = readyToExportFiles.get(readyToExportFile);
 				byte[] dataBlock = new byte[1024];
 				int count = inputStream.read(dataBlock, 0, 1024);
@@ -113,32 +112,32 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 				    count = inputStream.read(dataBlock, 0, 1024);
 				}
 			}
-		
+
 		String exportName = sModule + "_" + markerCount + "variants_" + individualExportFiles.size() + "individuals";
-		
-		StringBuffer donFileContents = new StringBuffer("@DARwin 5.0 - DON -" + LINE_SEPARATOR + individualExportFiles.size() + "\t" + 1 + LINE_SEPARATOR + "N°" + "\t" + "individual" + LINE_SEPARATOR);		
+
+		StringBuffer donFileContents = new StringBuffer("@DARwin 5.0 - DON -" + LINE_SEPARATOR + individualExportFiles.size() + "\t" + 1 + LINE_SEPARATOR + "N°" + "\t" + "individual" + LINE_SEPARATOR);
 
 		int count = 0;
 		String missingGenotype = "";
 		for (int j=0; j<ploidy; j++)
 			missingGenotype += "\tN";
-			
+
 		zos.putNextEntry(new ZipEntry(exportName + ".var"));
 		zos.write(("@DARwin 5.0 - ALLELIC - " + ploidy + LINE_SEPARATOR + individualExportFiles.size() + "\t" + markerCount*ploidy + LINE_SEPARATOR + "N°").getBytes());
-		
+
 		DBCursor markerCursorCopy = markerCursor.copy();	// dunno how expensive this is, but seems safer than keeping all IDs in memory at any time
-		
+
 		short nProgress = 0, nPreviousProgress = 0;
 		int avgObjSize = (Integer) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
-		int nChunkSize = nMaxChunkSizeInMb*1024*1024 / avgObjSize;		
+		int nChunkSize = nMaxChunkSizeInMb*1024*1024 / avgObjSize;
 		markerCursorCopy.batchSize(nChunkSize);
-		
+
 		int nMarkerIndex = 0;
 		while (markerCursorCopy.hasNext())
 		{
 			DBObject exportVariant = markerCursorCopy.next();
 			Comparable markerId = (Comparable) exportVariant.get("_id");
-			
+
         	if (markerSynonyms != null)
         	{
         		Comparable syn = markerSynonyms.get(markerId);
@@ -158,17 +157,17 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
             try
             {
             	String individualId, line = in.readLine();	// read sample id
-            	
+
             	if (line != null)
             		individualId = line;
             	else
             		throw new Exception("Unable to read first line of temp export file " + f.getName());
-            	
+
     			donFileContents.append(++count + "\t" + individualId + LINE_SEPARATOR);
-            	
+
             	zos.write((LINE_SEPARATOR + count).getBytes());
             	nMarkerIndex = 0;
-		        
+
             	while ((line = in.readLine()) != null)
 		        {
 		        	List<String> genotypes = MgdbDao.split(line, "|");
@@ -179,7 +178,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 					{
 						if (genotype.length() == 0)
 							continue;	/* skip missing genotypes */
-						
+
 						int gtCount = 1 + MgdbDao.getCountForKey(genotypeCounts, genotype);
 						if (gtCount > highestGenotypeCount)
 						{
@@ -188,13 +187,13 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 						}
 						genotypeCounts.put(genotype, gtCount);
 					}
-					
+
 					if (genotypeCounts.size() > 1)
 					{
 						warningFileWriter.write("- Dissimilar genotypes found for variant __" + nMarkerIndex + "__, individual " + individualId + ". Exporting most frequent: " + mostFrequentGenotype + "\n");
 						problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
 					}
-					
+
 					String codedGenotype = "";
 					if (mostFrequentGenotype != null)
 						for (String allele : mostFrequentGenotype.split(" "))
@@ -204,9 +203,9 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 							codedGenotype += "\t" + distinctAlleles.indexOf(allele);
 						}
 					else
-						codedGenotype = missingGenotype.replaceAll("N", "-1");	// missing data is coded as -1		
+						codedGenotype = missingGenotype.replaceAll("N", "-1");	// missing data is coded as -1
 					zos.write(codedGenotype.getBytes());
-					
+
 	                nMarkerIndex++;
 		        }
             }
@@ -220,10 +219,10 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
             {
             	in.close();
             }
-            
+
             if (progress.hasAborted())
             	return;
-            
+
 			nProgress = (short) (++i * 100 / individualExportFiles.size());
 			if (nProgress > nPreviousProgress)
 			{
@@ -231,17 +230,17 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 				progress.setCurrentStepProgress(nProgress);
 				nPreviousProgress = nProgress;
 			}
-			
+
 			if (!f.delete())
 			{
 				f.deleteOnExit();
 				LOG.info("Unable to delete tmp export file " + f.getAbsolutePath());
 			}
         }
-        
+
 		zos.putNextEntry(new ZipEntry(exportName + ".don"));
 		zos.write(donFileContents.toString().getBytes());
-		
+
 		// now read variant names for those that induced warnings
 		nMarkerIndex = 0;
 		markerCursor.batchSize(nChunkSize);
@@ -251,7 +250,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 			if (problematicMarkerIndexToNameMap.containsKey(nMarkerIndex))
 			{
 				Comparable markerId = (Comparable) exportVariant.get("_id");
-				
+
 	        	if (markerSynonyms != null)
 	        	{
 	        		Comparable syn = markerSynonyms.get(markerId);
@@ -260,12 +259,12 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 	        	}
 				for (int j=0; j<ploidy; j++)
 					zos.write(("\t" + markerId).getBytes());
-				
+
 				problematicMarkerIndexToNameMap.put(nMarkerIndex, markerId);
 			}
 		}
-        
-		warningFileWriter.close();        
+
+		warningFileWriter.close();
         if (warningFile.length() > 0)
         {
 	        zos.putNextEntry(new ZipEntry(exportName + "-REMARKS.txt"));

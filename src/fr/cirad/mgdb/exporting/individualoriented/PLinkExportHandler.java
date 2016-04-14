@@ -1,7 +1,7 @@
 /*******************************************************************************
  * MGDB Export - Mongo Genotype DataBase, export handlers
  * Copyright (C) 2016 <South Green>
- *     
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 3 as
  * published by the Free Software Foundation.
@@ -47,7 +47,6 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import com.mongodb.DBCursor;
 import com.mongodb.DBObject;
 
-// TODO: Auto-generated Javadoc
 /**
  * The Class PLinkExportHandler.
  */
@@ -58,7 +57,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 
 	/** The supported variant types. */
 	private static List<String> supportedVariantTypes;
-	
+
 	static
 	{
 		supportedVariantTypes = new ArrayList<String>();
@@ -89,7 +88,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	{
 		return supportedVariantTypes;
 	}
-	
+
 	/* (non-Javadoc)
 	 * @see fr.cirad.mgdb.exporting.individualoriented.AbstractIndividualOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.Collection, boolean, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, java.util.Map)
 	 */
@@ -100,11 +99,11 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 		FileWriter warningFileWriter = new FileWriter(warningFile);
 
 		ZipOutputStream zos = new ZipOutputStream(outputStream);
-		
+
 		if (readyToExportFiles != null)
 			for (String readyToExportFile : readyToExportFiles.keySet())
 			{
-				zos.putNextEntry(new ZipEntry(readyToExportFile));			
+				zos.putNextEntry(new ZipEntry(readyToExportFile));
 				InputStream inputStream = readyToExportFiles.get(readyToExportFile);
 				byte[] dataBlock = new byte[1024];
 				int count = inputStream.read(dataBlock, 0, 1024);
@@ -113,13 +112,13 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 				    count = inputStream.read(dataBlock, 0, 1024);
 				}
 			}
-		
+
 		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
 		int markerCount = markerCursor.count();
-			
-		String exportName = sModule + "_" + markerCount + "variants_" + individualExportFiles.size() + "individuals";		
+
+		String exportName = sModule + "_" + markerCount + "variants_" + individualExportFiles.size() + "individuals";
 		zos.putNextEntry(new ZipEntry(exportName + ".ped"));
-		
+
 		TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = new TreeMap<Integer, Comparable>();
 		short nProgress = 0, nPreviousProgress = 0;
 		int i = 0;
@@ -138,7 +137,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
             	}
             	else
             		throw new Exception("Unable to read first line of temp export file " + f.getName());
-            	
+
             	int nMarkerIndex = 0;
 		        while ((line = in.readLine()) != null)
 		        {
@@ -150,7 +149,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 					{
 						if (genotype.length() == 0)
 							continue;	/* skip missing genotypes */
-						
+
 						int gtCount = 1 + MgdbDao.getCountForKey(genotypeCounts, genotype);
 						if (gtCount > highestGenotypeCount)
 						{
@@ -159,20 +158,20 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 						}
 						genotypeCounts.put(genotype, gtCount);
 					}
-					
+
 					if (genotypeCounts.size() > 1)
 					{
 						warningFileWriter.write("- Dissimilar genotypes found for variant " + nMarkerIndex + ", individual " + individualId + ". Exporting most frequent: " + mostFrequentGenotype + "\n");
 						problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
 					}
-					
+
 					String[] alleles = mostFrequentGenotype == null ? new String[0] : mostFrequentGenotype.split(" ");
 					if (alleles.length > 2)
 					{
-						warningFileWriter.write("- More than 2 alleles found for variant " + nMarkerIndex + ", individual " + individualId + ". Exporting only the first 2 alleles.\n");						
+						warningFileWriter.write("- More than 2 alleles found for variant " + nMarkerIndex + ", individual " + individualId + ". Exporting only the first 2 alleles.\n");
 						problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
 					}
-					
+
 					String all1 = alleles.length == 0 ? "0" : alleles[0];
 					String all2 = alleles.length == 0 ? "0" : alleles[alleles.length == 1 ? 0 : 1];
 					if (all1.length() != 1 || all2.length() != 1)
@@ -196,10 +195,10 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
             {
             	in.close();
             }
-            
+
             if (progress.hasAborted())
             	return;
-            
+
 			nProgress = (short) (++i * 100 / individualExportFiles.size());
 			if (nProgress > nPreviousProgress)
 			{
@@ -207,19 +206,19 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 				nPreviousProgress = nProgress;
 			}
 			zos.write('\n');
-			
+
 			if (!f.delete())
 			{
 				f.deleteOnExit();
 				LOG.info("Unable to delete tmp export file " + f.getAbsolutePath());
 			}
         }
-		warningFileWriter.close(); 
-		
+		warningFileWriter.close();
+
 		zos.putNextEntry(new ZipEntry(exportName + ".map"));
 
 		int avgObjSize = (Integer) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
-		int nChunkSize = nMaxChunkSizeInMb*1024*1024 / avgObjSize;		
+		int nChunkSize = nMaxChunkSizeInMb*1024*1024 / avgObjSize;
 
 		markerCursor.batchSize(nChunkSize);
 		int nMarkerIndex = 0;
@@ -230,12 +229,12 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 			Comparable markerId = (Comparable) exportVariant.get("_id");
 			String chrom = (String) refPos.get(ReferencePosition.FIELDNAME_SEQUENCE);
 			Long pos = ((Number) refPos.get(ReferencePosition.FIELDNAME_START_SITE)).longValue();
-					
+
 			if (chrom == null)
 				LOG.warn("Chromosomal position not found for marker " + markerId);
 			Comparable exportedId = markerSynonyms == null ? markerId : markerSynonyms.get(markerId);
 			zos.write(((chrom == null ? "0" : chrom) + " " + exportedId + " " + 0 + " " + (pos == null ? 0 : pos) + LINE_SEPARATOR).getBytes());
-			
+
 			if (problematicMarkerIndexToNameMap.containsKey(nMarkerIndex))
 			{	// we are going to need this marker's name for the warning file
 				Comparable variantName = markerId;
@@ -249,7 +248,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 			}
 			nMarkerIndex++;
 		}
-		
+
         if (warningFile.length() > 0)
         {
 	        zos.putNextEntry(new ZipEntry(exportName + "-REMARKS.txt"));
@@ -272,7 +271,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
         zos.close();
 		progress.setCurrentStepProgress((short) 100);
 	}
-	
+
 	/* (non-Javadoc)
 	 * @see fr.cirad.mgdb.exporting.IExportHandler#getStepList()
 	 */
@@ -281,7 +280,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	{
 		return Arrays.asList(new String[] {"Exporting data to PLINK format"});
 	}
-	
+
 	/**
 	 * Gets the individual population.
 	 *

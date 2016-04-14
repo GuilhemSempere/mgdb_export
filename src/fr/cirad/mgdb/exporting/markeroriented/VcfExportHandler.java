@@ -1,7 +1,7 @@
 /*******************************************************************************
  * MGDB Export - Mongo Genotype DataBase, export handlers
  * Copyright (C) 2016 <South Green>
- *     
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 3 as
  * published by the Free Software Foundation.
@@ -72,7 +72,6 @@ import com.mongodb.BasicDBObject;
 import com.mongodb.DBCursor;
 import com.mongodb.DBObject;
 
-// TODO: Auto-generated Javadoc
 /**
  * The Class VcfExportHandler.
  */
@@ -80,7 +79,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 
 	/** The Constant LOG. */
 	private static final Logger LOG = Logger.getLogger(VcfExportHandler.class);
-	
+
 	/* (non-Javadoc)
 	 * @see fr.cirad.mgdb.exporting.IExportHandler#getExportFormatName()
 	 */
@@ -107,7 +106,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 	{
 		return Arrays.asList(new String[] {"Creating sequence list", "Exporting data to VCF format"});
 	}
-	
+
 	/**
 	 * Creates the sam sequence dictionary.
 	 *
@@ -117,7 +116,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 	 * @throws Exception the exception
 	 */
 	public SAMSequenceDictionary createSAMSequenceDictionary(String sModule, Collection<String> sequenceIDs) throws Exception
-	{	
+	{
 		SAMSequenceDictionary dict1 = new SAMSequenceDictionary();
 		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
 		String sequenceSeqCollName = MongoTemplateManager.getMongoCollectionName(Sequence.class);
@@ -137,7 +136,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 	    	LOG.info("createSAMSequenceDictionary took " + (System.currentTimeMillis() - before)/1000d + "s to write " + sequenceIDs.size() + " sequences");
 		}
 		else
-			LOG.info("No sequence data was found. No SAMSequenceDictionary could be created.");			
+			LOG.info("No sequence data was found. No SAMSequenceDictionary could be created.");
 	    return dict1;
 	}
 
@@ -158,18 +157,18 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				break;	// more than one project are involved: no header will be written
 			}
 		}
-		
+
 		File warningFile = File.createTempFile("export_warnings_", "");
 		FileWriter warningFileWriter = new FileWriter(warningFile);
-		
-		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);		
+
+		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
 		int markerCount = markerCursor.count();
 		ZipOutputStream zos = new ZipOutputStream(outputStream);
-		
+
 		if (readyToExportFiles != null)
 			for (String readyToExportFile : readyToExportFiles.keySet())
 			{
-				zos.putNextEntry(new ZipEntry(readyToExportFile));			
+				zos.putNextEntry(new ZipEntry(readyToExportFile));
 				InputStream inputStream = readyToExportFiles.get(readyToExportFile);
 				byte[] dataBlock = new byte[1024];
 				int count = inputStream.read(dataBlock, 0, 1024);
@@ -189,13 +188,13 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				individualList.add(individualId);
 			}
 		}
-		
+
 		String exportName = sModule + "_" + markerCount + "variants_" + individualList.size() + "individuals";
 		zos.putNextEntry(new ZipEntry(exportName + ".vcf"));
 
 		int avgObjSize = (Integer) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
 		int nQueryChunkSize = nMaxChunkSizeInMb*1024*1024 / avgObjSize;
-		
+
 		VariantContextWriter writer = null;
 		try
 		{
@@ -203,7 +202,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 
 			String sequenceSeqCollName = MongoTemplateManager.getMongoCollectionName(Sequence.class);
 			if (mongoTemplate.collectionExists(sequenceSeqCollName))
-			{	
+			{
 				DBCursor markerCursorCopy = markerCursor.copy();
 				markerCursorCopy.batchSize(nQueryChunkSize);
 				while (markerCursorCopy.hasNext())
@@ -241,9 +240,9 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				DBVCFHeader vcfHeader = DBVCFHeader.fromDBObject(headerCursor.next());
 				headerCursor.close();
 				Set<VCFHeaderLine> headerLines = vcfHeader.getHeaderLines();
-				
+
 				// Add sequence header lines (not stored in our vcf header collection)
-				BasicDBObject projection = new BasicDBObject(SequenceStats.FIELDNAME_SEQUENCE_LENGTH, true);						
+				BasicDBObject projection = new BasicDBObject(SequenceStats.FIELDNAME_SEQUENCE_LENGTH, true);
 				int nSequenceIndex = 0;
 				for (String sequenceName : distinctSequenceNames)
 				{
@@ -263,23 +262,23 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 						headerLines.add(new VCFContigHeaderLine(sequenceLineData, nSequenceIndex++));
 					}
 				}
-								
+
 				VCFHeader header = new VCFHeader(headerLines, individualList);
 				header.setWriteCommandLine(vcfHeader.getWriteCommandLine());
 				header.setWriteEngineHeaders(vcfHeader.getWriteEngineHeaders());
-				
+
 				writer.writeHeader(header);
 			}
-					
-			short nProgress = 0, nPreviousProgress = 0;	
+
+			short nProgress = 0, nPreviousProgress = 0;
 			long nLoadedMarkerCount = 0;
 			HashMap<SampleId, Comparable /*phID*/> phasingIDsBySample = new HashMap<SampleId, Comparable>();
-						
+
 			while (markerCursor.hasNext())
 			{
 				if (progress.hasAborted())
 					return;
-						
+
 				int nLoadedMarkerCountInLoop = 0;
 				boolean fStartingNewChunk = true;
 				markerCursor.batchSize(nQueryChunkSize);
@@ -310,7 +309,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 					if (nLoadedMarkerCountInLoop > currentMarkers.size())
 						LOG.error("Bug: writing variant number " + nLoadedMarkerCountInLoop + " (only " + currentMarkers.size() + " variants expected)");
 				}
-				
+
 	            nLoadedMarkerCount += nLoadedMarkerCountInLoop;
 				nProgress = (short) (nLoadedMarkerCount * 100 / markerCount);
 				if (nProgress > nPreviousProgress) {

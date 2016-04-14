@@ -1,7 +1,7 @@
 /*******************************************************************************
  * MGDB Export - Mongo Genotype DataBase, export handlers
  * Copyright (C) 2016 <South Green>
- *     
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 3 as
  * published by the Free Software Foundation.
@@ -50,7 +50,6 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import com.mongodb.DBCursor;
 import com.mongodb.DBObject;
 
-// TODO: Auto-generated Javadoc
 /**
  * The Class HapMapExportHandler.
  */
@@ -61,13 +60,13 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 
 	/** The supported variant types. */
 	private static List<String> supportedVariantTypes;
-	
+
 	static
 	{
 		supportedVariantTypes = new ArrayList<String>();
 		supportedVariantTypes.add(Type.SNP.toString());
 	}
-	
+
 	/* (non-Javadoc)
 	 * @see fr.cirad.mgdb.exporting.IExportHandler#getExportFormatName()
 	 */
@@ -83,7 +82,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 	public String getExportFormatDescription() {
 		return "Exports data in HapMap Format. See <a target='_blank' href='http://heidi.chnebu.ch/doku.php?id=hapmap'>http://heidi.chnebu.ch/doku.php?id=hapmap</a> for more details";
 	}
-	
+
 	/* (non-Javadoc)
 	 * @see fr.cirad.mgdb.exporting.markeroriented.AbstractMarkerOrientedExportHandler#getSupportedVariantTypes()
 	 */
@@ -92,7 +91,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 	{
 		return supportedVariantTypes;
 	}
-	
+
 /* (non-Javadoc)
  * @see fr.cirad.mgdb.exporting.markeroriented.AbstractMarkerOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.List, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, int, int, java.util.Map)
  */
@@ -104,13 +103,13 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 		FileWriter warningFileWriter = new FileWriter(warningFile);
 
 		int markerCount = markerCursor.count();
-		
+
 		ZipOutputStream zos = new ZipOutputStream(outputStream);
-		
+
 		if (readyToExportFiles != null)
 			for (String readyToExportFile : readyToExportFiles.keySet())
 			{
-				zos.putNextEntry(new ZipEntry(readyToExportFile));			
+				zos.putNextEntry(new ZipEntry(readyToExportFile));
 				InputStream inputStream = readyToExportFiles.get(readyToExportFile);
 				byte[] dataBlock = new byte[1024];
 				int count = inputStream.read(dataBlock, 0, 1024);
@@ -119,7 +118,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 				    count = inputStream.read(dataBlock, 0, 1024);
 				}
 			}
-		
+
 		List<Individual> individuals = getIndividualsFromSamples(sModule, sampleIDs);
 		ArrayList<String> individualList = new ArrayList<String>();
 		for (int i = 0; i < sampleIDs.size(); i++) {
@@ -137,10 +136,10 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 			zos.write(("\t" + individualList.get(i)).getBytes());
 		}
 		zos.write((LINE_SEPARATOR).getBytes());
-		
+
 		int avgObjSize = (Integer) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
-		int nChunkSize = nMaxChunkSizeInMb*1024*1024 / avgObjSize;		
-		short nProgress = 0, nPreviousProgress = 0;	
+		int nChunkSize = nMaxChunkSizeInMb*1024*1024 / avgObjSize;
+		short nProgress = 0, nPreviousProgress = 0;
 		long nLoadedMarkerCount = 0;
 
 		while (markerCursor == null || markerCursor.hasNext())
@@ -158,7 +157,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 			}
 
 			List<Comparable> currentMarkers = new ArrayList<Comparable>(markerChromosomalPositions.keySet());
-			LinkedHashMap<VariantData, Collection<VariantRunData>> variantsAndRuns = MgdbDao.getSampleGenotypes(mongoTemplate, sampleIDs, currentMarkers, true, null /*new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_SEQUENCE).and(new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_START_SITE))*/);	// query mongo db for matching genotypes			
+			LinkedHashMap<VariantData, Collection<VariantRunData>> variantsAndRuns = MgdbDao.getSampleGenotypes(mongoTemplate, sampleIDs, currentMarkers, true, null /*new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_SEQUENCE).and(new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_START_SITE))*/);	// query mongo db for matching genotypes
 			for (VariantData variant : variantsAndRuns.keySet()) // read data and write results into temporary files (one per sample)
 			{
 				Comparable variantId = variant.getId();
@@ -167,13 +166,13 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 	        		Comparable syn = markerSynonyms.get(variantId);
 	        		if (syn != null)
 	        			variantId = syn;
-	        	}	
+	        	}
 
 				boolean fIsSNP = variant.getType().equals(Type.SNP.toString());
 				byte[] missingGenotype = ("\t" + "NN").getBytes();
 
 				String[] chromAndPos = markerChromosomalPositions.get(variant.getId()).split(":");
-				zos.write(((variantId == null ? variant.getId() : variantId) + "\t" + StringUtils.join(variant.getKnownAlleleList(), "/") + "\t" + chromAndPos[0] + "\t" + Long.parseLong(chromAndPos[1]) + "\t" + "+").getBytes()); 
+				zos.write(((variantId == null ? variant.getId() : variantId) + "\t" + StringUtils.join(variant.getKnownAlleleList(), "/") + "\t" + chromAndPos[0] + "\t" + Long.parseLong(chromAndPos[1]) + "\t" + "+").getBytes());
 				for (int j=0; j<6; j++)
 					zos.write(("\t" + "NA").getBytes());
 
@@ -198,10 +197,10 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 							gqValueForSampleId.put(individualId, (Integer) sampleGenotype.getAdditionalInfo().get(VariantData.GT_FIELD_GQ));
 							dpValueForSampleId.put(individualId, (Integer) sampleGenotype.getAdditionalInfo().get(VariantData.GT_FIELD_DP));
 						}
-				
-				int writtenGenotypeCount = 0;						
+
+				int writtenGenotypeCount = 0;
 				for (String individualId : individualList /* we use this list because it has the proper ordering */)
-				{					
+				{
 					int individualIndex = individualList.indexOf(individualId);
 					while (writtenGenotypeCount < individualIndex - 1)
 					{
@@ -218,11 +217,11 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 						{
 							if (genotype.length() == 0)
 								continue;	/* skip missing genotypes */
-							
+
 							Integer gqValue = gqValueForSampleId.get(individualId);
 							if (gqValue != null && gqValue < nMinimumGenotypeQuality)
 								continue; /* skip this sample because its GQ is under the threshold */
-							
+
 							Integer dpValue = dpValueForSampleId.get(individualId);
 							if (dpValue != null && dpValue < nMinimumReadDepth)
 								continue; /* skip this sample because its DP is under the threshold */
@@ -241,7 +240,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 					writtenGenotypeCount++;
 
 					if (genotypeCounts.size() > 1)
-						warningFileWriter.write("- Dissimilar genotypes found for variant " + (variantId == null ? variant.getId() : variantId) + ", individual " + individualId + ". Exporting most frequent: " + new String(exportedGT) + "\n");					
+						warningFileWriter.write("- Dissimilar genotypes found for variant " + (variantId == null ? variant.getId() : variantId) + ", individual " + individualId + ". Exporting most frequent: " + new String(exportedGT) + "\n");
 				}
 
 				while (writtenGenotypeCount < individualList.size())
@@ -251,7 +250,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 				}
 				zos.write((LINE_SEPARATOR).getBytes());
 			}
-		
+
 			if (progress.hasAborted())
 				return;
 
@@ -263,10 +262,10 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 				//					LOG.info("========================= exportData: " + nProgress + "% =========================" + (System.currentTimeMillis() - before)/1000 + "s");
 				progress.setCurrentStepProgress(nProgress);
 				nPreviousProgress = nProgress;
-			}	
+			}
 		}
-		
-		warningFileWriter.close();        
+
+		warningFileWriter.close();
 		if (warningFile.length() > 0)
 		{
 			zos.putNextEntry(new ZipEntry(exportName + "-REMARKS.txt"));
