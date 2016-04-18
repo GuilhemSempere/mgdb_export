@@ -40,7 +40,6 @@ import htsjdk.variant.vcf.VCFHeaderVersion;
 import htsjdk.variant.vcf.VCFHeaderLine;
 import htsjdk.variant.vcf.VCFInfoHeaderLine;
 
-import org.broadinstitute.gatk.utils.exceptions.UserException;
 
 /**
  * This class is pretty much a clone of GATK's org.broadinstitute.sting.utils.variantcontext.writer.VCFWriter.
@@ -655,11 +654,12 @@ public class CustomVCFWriter extends IndexingVariantContextWriter
      * @param vc the vc
      * @param id the id
      * @param field the field
+     * @throws Exception 
      */
     private final void fieldIsMissingFromHeaderError(VariantContext vc, String id, String field)
     {
         if(!allowMissingFieldsInHeader)
-            throw new UserException.MalformedVCFHeader((new StringBuilder()).append("Key ").append(id).append(" found in VariantContext field ").append(field).append(" at ").append(vc.getChr()).append(":").append(vc.getStart()).append(" but this key isn't defined in the VCFHeader.  The GATK now requires all VCFs to have").append(" complete VCF headers by default.  This error can be disabled with the engine argument").append(" -U LENIENT_VCF_PROCESSING").toString());
+            throw new RuntimeException((new StringBuilder()).append("Malformed VCF Header: Key ").append(id).append(" found in VariantContext field ").append(field).append(" at ").append(vc.getChr()).append(":").append(vc.getStart()).append(" but this key isn't defined in the VCFHeader.  The GATK now requires all VCFs to have").append(" complete VCF headers by default.  This error can be disabled with the engine argument").append(" -U LENIENT_VCF_PROCESSING").toString());
         else
             return;
     }
