@@ -233,13 +233,13 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 
 			progress.moveToNextStep();	// done with dictionary
 			DBCursor headerCursor = mongoTemplate.getCollection(MongoTemplateManager.getMongoCollectionName(DBVCFHeader.class)).find(new BasicDBObject("_id." + VcfHeaderId.FIELDNAME_PROJECT, projectId));
-			if (headerCursor.size() == 0)
-				writer.writeHeader(new VCFHeader(new HashSet<VCFHeaderLine>(), individualList));
-			else
+			Set<VCFHeaderLine> headerLines = new HashSet<VCFHeaderLine>();
+			boolean fWriteCommandLine = true, fWriteEngineHeaders = true;	// default values
+
+			while (headerCursor.hasNext())
 			{
-				DBVCFHeader vcfHeader = DBVCFHeader.fromDBObject(headerCursor.next());
-				headerCursor.close();
-				Set<VCFHeaderLine> headerLines = vcfHeader.getHeaderLines();
+				DBVCFHeader dbVcfHeader = DBVCFHeader.fromDBObject(headerCursor.next());
+				headerLines.addAll(dbVcfHeader.getHeaderLines());
 
 				// Add sequence header lines (not stored in our vcf header collection)
 				BasicDBObject projection = new BasicDBObject(SequenceStats.FIELDNAME_SEQUENCE_LENGTH, true);
@@ -262,13 +262,16 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 						headerLines.add(new VCFContigHeaderLine(sequenceLineData, nSequenceIndex++));
 					}
 				}
-
-				VCFHeader header = new VCFHeader(headerLines, individualList);
-				header.setWriteCommandLine(vcfHeader.getWriteCommandLine());
-				header.setWriteEngineHeaders(vcfHeader.getWriteEngineHeaders());
-
-				writer.writeHeader(header);
+				fWriteCommandLine = headerCursor.size() == 1 && dbVcfHeader.getWriteCommandLine();	// wouldn't make sense to include command lines for several runs
+				if (!dbVcfHeader.getWriteEngineHeaders())
+					fWriteEngineHeaders = false;
 			}
+			headerCursor.close();
+
+			VCFHeader header = new VCFHeader(headerLines, individualList);
+			header.setWriteCommandLine(fWriteCommandLine);
+			header.setWriteEngineHeaders(fWriteEngineHeaders);
+			writer.writeHeader(header);
 
 			short nProgress = 0, nPreviousProgress = 0;
 			long nLoadedMarkerCount = 0;
