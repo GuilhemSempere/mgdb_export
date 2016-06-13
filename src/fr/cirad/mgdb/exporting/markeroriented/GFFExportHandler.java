@@ -57,6 +57,8 @@ import fr.cirad.tools.mongo.MongoTemplateManager;
 
 /**
  * The Class GFFExportHandler.
+ * 
+ * @author Guilhem SEMPERE, Florian PHILIPPE
  */
 public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 

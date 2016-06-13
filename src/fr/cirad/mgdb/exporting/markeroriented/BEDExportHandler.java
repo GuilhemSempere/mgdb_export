@@ -41,6 +41,8 @@ import fr.cirad.tools.mongo.MongoTemplateManager;
 
 /**
  * The Class BEDExportHandler.
+ * 
+ * @author Guilhem SEMPERE, Florian PHILIPPE
  */
 public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 {
