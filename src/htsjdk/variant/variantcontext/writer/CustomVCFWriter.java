@@ -1,18 +1,18 @@
 /*******************************************************************************
  * MGDB Export - Mongo Genotype DataBase, export handlers
- * Copyright (C) 2016 <South Green>
- *
+ * Copyright (C) 2016 <CIRAD>
+ *     
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License, version 3 as
+ * it under the terms of the GNU Affero General Public License, version 3 as
  * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
  * See <http://www.gnu.org/licenses/gpl-3.0.html> for details about
- * GNU General Public License V3.
+ * GNU Affero General Public License V3.
  *******************************************************************************/
 package htsjdk.variant.variantcontext.writer;
 
@@ -45,7 +45,6 @@ import htsjdk.variant.vcf.VCFInfoHeaderLine;
  * This class is pretty much a clone of GATK's org.broadinstitute.sting.utils.variantcontext.writer.VCFWriter.
  * It was added in order to be able to force the default locale (en_US) to be used when formatting numbers (methods formatVCFDouble & formatQualValue)
  *
- * @author SEMPERE
  */
 public class CustomVCFWriter extends IndexingVariantContextWriter
 {
