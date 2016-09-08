@@ -4,15 +4,8 @@
     <artifactId>mgdb_export</artifactId>
     <version>1.0-RELEASE</version>
     
-    <parent>
-        <groupId>fr.cirad</groupId>
-        <artifactId>GIGWA</artifactId>
-        <version>1.0-RELEASE</version>
-    </parent>
-    
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <netbeans.hint.licensePath>${project.parent.basedir}/licenseheader.txt</netbeans.hint.licensePath>
     </properties>
 
     <dependencies>
