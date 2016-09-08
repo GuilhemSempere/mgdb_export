@@ -1,26 +1,48 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-  <modelVersion>4.0.0</modelVersion>
-  <groupId>fr.cirad</groupId>
-  <artifactId>mgdb_export</artifactId>
-  <version>1.0-RELEASE</version>
-  <dependencies>
-		<dependency>
-			<groupId>fr.cirad</groupId>
-			<artifactId>mgdb</artifactId>
-			<version>1.0-RELEASE</version>
-		</dependency>
-  </dependencies>
-  <build>
-    <sourceDirectory>src</sourceDirectory>
-    <plugins>
-      <plugin>
-        <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.1</version>
-        <configuration>
-          <source/>
-          <target/>
-        </configuration>
-      </plugin>
-    </plugins>
-  </build>
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>fr.cirad</groupId>
+    <artifactId>mgdb_export</artifactId>
+    <version>1.0-RELEASE</version>
+    
+    <parent>
+        <groupId>fr.cirad</groupId>
+        <artifactId>GIGWA</artifactId>
+        <version>1.0-RELEASE</version>
+    </parent>
+    
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <netbeans.hint.licensePath>${project.parent.basedir}/licenseheader.txt</netbeans.hint.licensePath>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>fr.cirad</groupId>
+            <artifactId>mgdb</artifactId>
+            <version>1.0-RELEASE</version>
+        </dependency>
+    </dependencies>
+    <build>
+        <sourceDirectory>src</sourceDirectory>
+        <plugins>
+            <plugin>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.1</version>
+                <configuration>
+                    <source/>
+                    <target/>
+                    <encoding>${project.build.sourceEncoding}</encoding>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <version>2.4.3</version>
+                <configuration>
+                    <encoding>${project.build.sourceEncoding}</encoding>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+   
 </project>

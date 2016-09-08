@@ -11,7 +11,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU Affero General Public License for more details.
  *
- * See <http://www.gnu.org/licenses/gpl-3.0.html> for details about
+ * See <http://www.gnu.org/licenses/agpl.html> for details about
  * GNU Affero General Public License V3.
  *******************************************************************************/
 package fr.cirad.mgdb.exporting.markeroriented;
@@ -39,17 +39,16 @@ import fr.cirad.mgdb.model.mongo.subtypes.SampleId;
 import fr.cirad.tools.ProgressIndicator;
 import fr.cirad.tools.mongo.MongoTemplateManager;
 
+// TODO: Auto-generated Javadoc
 /**
  * The Class BEDExportHandler.
- * 
- * @author Guilhem SEMPERE, Florian PHILIPPE
  */
 public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 {
-
+	
 	/** The Constant LOG. */
 	static final Logger LOG = Logger.getLogger(BEDExportHandler.class);
-
+	
 	/* (non-Javadoc)
 	 * @see fr.cirad.mgdb.exporting.IExportHandler#getExportFormatName()
 	 */
@@ -65,7 +64,7 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 	public String getExportFormatDescription() {
 		return "Exports data in BED Format. See <a target='_blank' href='http://genome.ucsc.edu/FAQ/FAQformat.html#format1'>http://genome.ucsc.edu/FAQ/FAQformat.html#format1</a> for more details";
 	}
-
+	
 	/* (non-Javadoc)
 	 * @see fr.cirad.mgdb.exporting.IExportHandler#getStepList()
 	 */
@@ -81,11 +80,11 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 	public void exportData(OutputStream outputStream, String sModule, List<SampleId> sampleIDs, ProgressIndicator progress, DBCursor markerCursor, Map<Comparable, Comparable> markerSynonyms, int nMinimumGenotypeQuality, int nMinimumReadDepth, Map<String, InputStream> readyToExportFiles) throws Exception {
 		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
 		ZipOutputStream zos = new ZipOutputStream(outputStream);
-
+		
 		if (readyToExportFiles != null)
 			for (String readyToExportFile : readyToExportFiles.keySet())
 			{
-				zos.putNextEntry(new ZipEntry(readyToExportFile));
+				zos.putNextEntry(new ZipEntry(readyToExportFile));			
 				InputStream inputStream = readyToExportFiles.get(readyToExportFile);
 				byte[] dataBlock = new byte[1024];
 				int count = inputStream.read(dataBlock, 0, 1024);
@@ -94,17 +93,17 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 				    count = inputStream.read(dataBlock, 0, 1024);
 				}
 			}
-
+				
 		int markerCount = markerCursor.count();
-
+		
 		List<String> selectedIndividualList = new ArrayList<String>();
 		for (Individual ind : getIndividualsFromSamples(sModule, sampleIDs))
 			selectedIndividualList.add(ind.getId());
-
+		
 		String exportName = sModule + "_" + markerCount + "variants_" + selectedIndividualList.size() + "individuals";
 		zos.putNextEntry(new ZipEntry(exportName + ".bed"));
-
-		short nProgress = 0, nPreviousProgress = 0;
+		
+		short nProgress = 0, nPreviousProgress = 0;	
 		int nChunkSize = Math.min(2000, markerCount), nLoadedMarkerCount = 0;
 		while (markerCursor.hasNext())
 		{
@@ -126,7 +125,7 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 				zos.write((chromAndPos[0] + "\t" + (Long.parseLong(chromAndPos[1])-1)  + "\t" + (Long.parseLong(chromAndPos[1])-1) + "\t" + variantId + "\t" + "0" + "\t" + "+").getBytes());
 				zos.write((LINE_SEPARATOR).getBytes());
 			}
-
+			
             if (progress.hasAborted())
             	return;
 
@@ -136,7 +135,7 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 			{
 				progress.setCurrentStepProgress(nProgress);
 				nPreviousProgress = nProgress;
-			}
+			}	
         }
 
         zos.close();
