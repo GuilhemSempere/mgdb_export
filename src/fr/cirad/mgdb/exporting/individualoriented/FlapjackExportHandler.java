@@ -51,14 +51,14 @@ import com.mongodb.DBObject;
 
 // TODO: Auto-generated Javadoc
 /**
- * The Class PLinkExportHandler.
+ * The Class FlapjackExportHandler.
  */
-public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler {
+public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandler {
 
     /**
      * The Constant LOG.
      */
-    private static final Logger LOG = Logger.getLogger(PLinkExportHandler.class);
+    private static final Logger LOG = Logger.getLogger(FlapjackExportHandler.class);
 
     /**
      * The supported variant types.
@@ -75,7 +75,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
      */
     @Override
     public String getExportFormatName() {
-        return "PLINK";
+        return "FLAPJACK";
     }
 
     /* (non-Javadoc)
@@ -121,7 +121,9 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
         int markerCount = markerCursor.count();
 
         String exportName = sModule + "_" + markerCount + "variants_" + individualExportFiles.size() + "individuals";
-        zos.putNextEntry(new ZipEntry(exportName + ".ped"));
+        zos.putNextEntry(new ZipEntry(exportName + ".dat"));
+        zos.write(("# fjFile = GENOTYPE" + LINE_SEPARATOR).getBytes());
+        zos.write(("\t" + LINE_SEPARATOR).getBytes());
 
         TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = new TreeMap<Integer, Comparable>();
         short nProgress = 0, nPreviousProgress = 0;
@@ -134,9 +136,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	                String individualId, line = in.readLine();	// read sample id
 	                if (line != null) {
 	                    individualId = line;
-	                    String population = getIndividualPopulation(sModule, line);
-	                    String individualInfo = (population == null ? "." : population) + " " + individualId;
-	                    zos.write((individualInfo + " 0 0 0 " + getIndividualGenderCode(sModule, individualId)).getBytes());
+	                    zos.write(individualId.getBytes());
 	                } else {
 	                    throw new Exception("Unable to read first line of temp export file " + f.getName());
 	                }
@@ -170,14 +170,20 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	                        warningFileWriter.write("- More than 2 alleles found for variant " + nMarkerIndex + ", individual " + individualId + ". Exporting only the first 2 alleles.\n");
 	                        problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
 	                    }
-	
-	                    String all1 = alleles.length == 0 ? "0" : alleles[0];
-	                    String all2 = alleles.length == 0 ? "0" : alleles[alleles.length == 1 ? 0 : 1];
-	                    if (all1.length() != 1 || all2.length() != 1) {
-	                        warningFileWriter.write("- SNP expected, but alleles are not coded on a single char for variant " + nMarkerIndex + ", individual " + individualId + ". Ignoring this genotype.\n");
-	                        problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
-	                    } else {
-	                        zos.write((" " + all1 + " " + all2).getBytes());
+
+	                    if (alleles.length == 0)
+	                    	zos.write(("\t-").getBytes());
+	                    else
+	                    {
+		                    String all1 = alleles.length == 0 ? "0" : alleles[0];
+		                    String all2 = alleles.length == 0 ? "0" : alleles[alleles.length == 1 ? 0 : 1];
+		                    if (all1.length() != 1 || all2.length() != 1)
+		                    {
+		                        warningFileWriter.write("- SNP expected, but alleles are not coded on a single char for variant " + nMarkerIndex + ", individual " + individualId + ". Ignoring this genotype.\n");
+		                        problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
+		                    }
+		                    else
+		                        zos.write(("\t" + all1 + (!all2.equals(all1) ? "/" + all2 : "")).getBytes());
 	                    }
 	
 	                    nMarkerIndex++;
@@ -213,6 +219,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
         warningFileWriter.close();
 
         zos.putNextEntry(new ZipEntry(exportName + ".map"));
+        zos.write(("#fjFile = MAP" + LINE_SEPARATOR).getBytes());
 
         int avgObjSize = (Integer) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
         int nChunkSize = nMaxChunkSizeInMb * 1024 * 1024 / avgObjSize;
@@ -230,7 +237,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
                 LOG.warn("Chromosomal position not found for marker " + markerId);
             }
             Comparable exportedId = markerSynonyms == null ? markerId : markerSynonyms.get(markerId);
-            zos.write(((chrom == null ? "0" : chrom) + " " + exportedId + " " + 0 + " " + (pos == null ? 0 : pos) + LINE_SEPARATOR).getBytes());
+            zos.write((exportedId + "\t" + (chrom == null ? "0" : chrom) + "\t" + (pos == null ? 0 : pos) + LINE_SEPARATOR).getBytes());
 
             if (problematicMarkerIndexToNameMap.containsKey(nMarkerIndex)) {	// we are going to need this marker's name for the warning file
                 Comparable variantName = markerId;
