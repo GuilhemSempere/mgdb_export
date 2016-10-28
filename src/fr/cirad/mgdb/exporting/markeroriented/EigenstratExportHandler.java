@@ -170,6 +170,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
                         zos.write(dataBlock, 0, count);
                         count = inputStream.read(dataBlock, 0, 1024);
                     }
+                    zos.closeEntry();
                 }
             }
 
@@ -192,7 +193,8 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
             String exportName = sModule + "_" + markerCount + "variants_" + individualList.size() + "individuals";
             zos.putNextEntry(new ZipEntry(exportName + ".ind"));
             zos.write(indFileContents.toString().getBytes());
-
+            zos.closeEntry();
+            
             zos.putNextEntry(new ZipEntry(exportName + ".eigenstratgeno"));
 
             int avgObjSize = (Integer) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
@@ -334,8 +336,9 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
                     nPreviousProgress = nProgress;
                 }
             }
-
+            zos.closeEntry();
             snpFileWriter.close();
+            
             zos.putNextEntry(new ZipEntry(exportName + ".snp"));
             BufferedReader in = new BufferedReader(new FileReader(snpFile));
             String sLine;
@@ -343,6 +346,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
                 zos.write((sLine + "\n").getBytes());
             }
             in.close();
+            zos.closeEntry();
 
             warningFileWriter.close();
             if (warningFile.length() > 0) {
@@ -355,9 +359,11 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
                 }
                 LOG.info("Number of Warnings for export (" + exportName + "): " + nWarningCount);
                 in.close();
+                zos.closeEntry();
             }
             warningFile.delete();
 
+            zos.finish();
             zos.close();
             progress.setCurrentStepProgress((short) 100);
         } finally {

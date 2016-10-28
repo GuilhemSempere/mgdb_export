@@ -120,6 +120,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
                     zos.write(dataBlock, 0, count);
                     count = inputStream.read(dataBlock, 0, 1024);
                 }
+                zos.closeEntry();
             }
         }
 
@@ -269,6 +270,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
                 nPreviousProgress = nProgress;
             }
         }
+        zos.closeEntry();
 
         warningFileWriter.close();
         if (warningFile.length() > 0) {
@@ -283,9 +285,11 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
             }
             LOG.info("Number of Warnings for export (" + exportName + "): " + nWarningCount);
             in.close();
+            zos.closeEntry();
         }
         warningFile.delete();
 
+        zos.finish();
         zos.close();
         progress.setCurrentStepProgress((short) 100);
     }

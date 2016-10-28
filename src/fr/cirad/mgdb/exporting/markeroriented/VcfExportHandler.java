@@ -176,6 +176,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 					zos.write(dataBlock, 0, count);
 				    count = inputStream.read(dataBlock, 0, 1024);
 				}
+				zos.closeEntry();
 			}
 
 		LinkedHashMap<SampleId, String> sampleIDToIndividualIdMap = new LinkedHashMap<SampleId, String>();
@@ -190,7 +191,6 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		}
 
 		String exportName = sModule + "_" + markerCount + "variants_" + individualList.size() + "individuals";
-		zos.putNextEntry(new ZipEntry(exportName + ".vcf"));
 
 		int avgObjSize = (Integer) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
 		int nQueryChunkSize = nMaxChunkSizeInMb*1024*1024 / avgObjSize;
@@ -198,6 +198,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		VariantContextWriter writer = null;
 		try
 		{
+			zos.putNextEntry(new ZipEntry(exportName + ".vcf"));
 			List<String> distinctSequenceNames = new ArrayList<String>();
 
 			String sequenceSeqCollName = MongoTemplateManager.getMongoCollectionName(Sequence.class);
@@ -321,7 +322,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				}
 			}
 			progress.setCurrentStepProgress((short) 100);
-
+			zos.closeEntry();
 		}
 		catch (Exception e)
 		{
@@ -343,11 +344,13 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				}
 				LOG.info("Number of Warnings for export (" + exportName + "): " + nWarningCount);
 				in.close();
+				zos.closeEntry();
 			}
 			warningFile.delete();
 			if (writer != null)
 				try
 				{
+					zos.finish();
 					writer.close();
 				}
 				catch (Throwable ignored)

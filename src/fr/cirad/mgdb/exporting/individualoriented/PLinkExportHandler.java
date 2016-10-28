@@ -114,6 +114,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
                     zos.write(dataBlock, 0, count);
                     count = inputStream.read(dataBlock, 0, 1024);
                 }
+                zos.closeEntry();
             }
         }
 
@@ -209,6 +210,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
                     f.deleteOnExit();
                     LOG.info("Unable to delete tmp export file " + f.getAbsolutePath());
                 }
+        	zos.closeEntry();
         }
         warningFileWriter.close();
 
@@ -244,6 +246,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
             }
             nMarkerIndex++;
         }
+        zos.closeEntry();
 
         if (warningFile.length() > 0) {
             zos.putNextEntry(new ZipEntry(exportName + "-REMARKS.txt"));
@@ -260,9 +263,11 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
             }
             LOG.info("Number of Warnings for export (" + exportName + "): " + nWarningCount);
             in.close();
+            zos.closeEntry();
         }
         warningFile.delete();
 
+        zos.finish();
         zos.close();
         progress.setCurrentStepProgress((short) 100);
     }

@@ -25,7 +25,7 @@ import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
 import fr.cirad.mgdb.model.mongodao.MgdbDao;
 import fr.cirad.tools.ProgressIndicator;
 import fr.cirad.tools.mongo.MongoTemplateManager;
-import htsjdk.variant.variantcontext.VariantContext.Type;
+//import htsjdk.variant.variantcontext.VariantContext.Type;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -33,7 +33,7 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.ArrayList;
+//import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -60,15 +60,15 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
      */
     private static final Logger LOG = Logger.getLogger(FlapjackExportHandler.class);
 
-    /**
-     * The supported variant types.
-     */
-    private static List<String> supportedVariantTypes;
-
-    static {
-        supportedVariantTypes = new ArrayList<String>();
-        supportedVariantTypes.add(Type.SNP.toString());
-    }
+//    /**
+//     * The supported variant types.
+//     */
+//    private static List<String> supportedVariantTypes;
+//
+//    static {
+//        supportedVariantTypes = new ArrayList<String>();
+//        supportedVariantTypes.add(Type.SNP.toString());
+//    }
 
     /* (non-Javadoc)
 	 * @see fr.cirad.mgdb.exporting.IExportHandler#getExportFormatName()
@@ -83,16 +83,16 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
      */
     @Override
     public String getExportFormatDescription() {
-        return "Exports zipped PED and MAP files. See <a target='_blank' href='http://pngu.mgh.harvard.edu/~purcell/plink/data.shtml'>http://pngu.mgh.harvard.edu/~purcell/plink/data.shtml</a> for more details";
+        return "Exports zipped GENOTYPE and MAP files. See <a target='_blank' href='https://ics.hutton.ac.uk/wiki/index.php/Flapjack_Help_-_Projects_and_Data_Formats'>https://ics.hutton.ac.uk/wiki/index.php/Flapjack_Help_-_Projects_and_Data_Formats</a> for more details";
     }
-
-    /* (non-Javadoc)
-	 * @see fr.cirad.mgdb.exporting.individualoriented.AbstractIndividualOrientedExportHandler#getSupportedVariantTypes()
-     */
-    @Override
-    public List<String> getSupportedVariantTypes() {
-        return supportedVariantTypes;
-    }
+//
+//    /* (non-Javadoc)
+//	 * @see fr.cirad.mgdb.exporting.individualoriented.AbstractIndividualOrientedExportHandler#getSupportedVariantTypes()
+//     */
+//    @Override
+//    public List<String> getSupportedVariantTypes() {
+//        return supportedVariantTypes;
+//    }
 
     /* (non-Javadoc)
 	 * @see fr.cirad.mgdb.exporting.individualoriented.AbstractIndividualOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.Collection, boolean, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, java.util.Map)
@@ -114,16 +114,28 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
                     zos.write(dataBlock, 0, count);
                     count = inputStream.read(dataBlock, 0, 1024);
                 }
+                zos.closeEntry();
             }
         }
 
         MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         int markerCount = markerCursor.count();
-
+        int avgObjSize = (Integer) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
+        int nChunkSize = nMaxChunkSizeInMb * 1024 * 1024 / avgObjSize;
+        
         String exportName = sModule + "_" + markerCount + "variants_" + individualExportFiles.size() + "individuals";
-        zos.putNextEntry(new ZipEntry(exportName + ".dat"));
-        zos.write(("# fjFile = GENOTYPE" + LINE_SEPARATOR).getBytes());
-        zos.write(("\t" + LINE_SEPARATOR).getBytes());
+        zos.putNextEntry(new ZipEntry(exportName + ".genotype"));
+        zos.write(("#fjFile = GENOTYPE" + LINE_SEPARATOR).getBytes());
+        
+        DBCursor markerCursorCopy = markerCursor.copy();
+        markerCursorCopy.batchSize(nChunkSize);
+        while (markerCursorCopy.hasNext()) {
+            DBObject exportVariant = markerCursorCopy.next();
+            Comparable markerId = (Comparable) exportVariant.get("_id");
+            Comparable exportedId = markerSynonyms == null ? markerId : markerSynonyms.get(markerId);
+            zos.write(("\t" + exportedId).getBytes());
+        }
+        zos.write(LINE_SEPARATOR.getBytes());
 
         TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = new TreeMap<Integer, Comparable>();
         short nProgress = 0, nPreviousProgress = 0;
@@ -175,17 +187,11 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
 	                    	zos.write(("\t-").getBytes());
 	                    else
 	                    {
-		                    String all1 = alleles.length == 0 ? "0" : alleles[0];
-		                    String all2 = alleles.length == 0 ? "0" : alleles[alleles.length == 1 ? 0 : 1];
-		                    if (all1.length() != 1 || all2.length() != 1)
-		                    {
-		                        warningFileWriter.write("- SNP expected, but alleles are not coded on a single char for variant " + nMarkerIndex + ", individual " + individualId + ". Ignoring this genotype.\n");
-		                        problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
-		                    }
-		                    else
-		                        zos.write(("\t" + all1 + (!all2.equals(all1) ? "/" + all2 : "")).getBytes());
+		                    String all1 = alleles[0];
+		                    String all2 = alleles[alleles.length == 1 ? 0 : 1];
+	                        zos.write(("\t" + all1 + (!all2.equals(all1) ? "/" + all2 : "")).getBytes());
 	                    }
-	
+
 	                    nMarkerIndex++;
 	                }
 	            } catch (Exception e) {
@@ -215,14 +221,12 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
                     f.deleteOnExit();
                     LOG.info("Unable to delete tmp export file " + f.getAbsolutePath());
                 }
+        	zos.closeEntry();
         }
         warningFileWriter.close();
 
         zos.putNextEntry(new ZipEntry(exportName + ".map"));
         zos.write(("#fjFile = MAP" + LINE_SEPARATOR).getBytes());
-
-        int avgObjSize = (Integer) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
-        int nChunkSize = nMaxChunkSizeInMb * 1024 * 1024 / avgObjSize;
 
         markerCursor.batchSize(nChunkSize);
         int nMarkerIndex = 0;
@@ -251,6 +255,7 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
             }
             nMarkerIndex++;
         }
+        zos.closeEntry();
 
         if (warningFile.length() > 0) {
             zos.putNextEntry(new ZipEntry(exportName + "-REMARKS.txt"));
@@ -267,9 +272,11 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
             }
             LOG.info("Number of Warnings for export (" + exportName + "): " + nWarningCount);
             in.close();
+            zos.closeEntry();
         }
         warningFile.delete();
 
+        zos.finish();
         zos.close();
         progress.setCurrentStepProgress((short) 100);
     }

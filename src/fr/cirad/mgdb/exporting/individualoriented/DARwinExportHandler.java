@@ -113,6 +113,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
                     zos.write(dataBlock, 0, count);
                     count = inputStream.read(dataBlock, 0, 1024);
                 }
+                zos.closeEntry();
             }
         }
 
@@ -231,14 +232,17 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
                     nPreviousProgress = nProgress;
                 }
             }
-        } finally {
-            for (File f : individualExportFiles) {
-                if (!f.delete()) {
+        }
+        finally
+        {
+            for (File f : individualExportFiles)
+                if (!f.delete())
+                {
                     f.deleteOnExit();
                     LOG.info("Unable to delete tmp export file " + f.getAbsolutePath());
                 }
-            }
         }
+        zos.closeEntry();
 
         zos.putNextEntry(new ZipEntry(exportName + ".don"));
         zos.write(donFileContents.toString().getBytes());
@@ -281,9 +285,11 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
             }
             LOG.info("Number of Warnings for export (" + exportName + "): " + nWarningCount);
             in.close();
+            zos.closeEntry();
         }
         warningFile.delete();
 
+        zos.finish();
         zos.close();
         progress.setCurrentStepProgress((short) 100);
     }

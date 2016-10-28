@@ -92,6 +92,7 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 					zos.write(dataBlock, 0, count);
 				    count = inputStream.read(dataBlock, 0, 1024);
 				}
+				zos.closeEntry();
 			}
 				
 		int markerCount = markerCursor.count();
@@ -137,7 +138,8 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 				nPreviousProgress = nProgress;
 			}	
         }
-
+		zos.closeEntry();
+		zos.finish();
         zos.close();
 		progress.setCurrentStepProgress((short) 100);
 	}
