@@ -125,7 +125,7 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
         
         String exportName = sModule + "_" + markerCount + "variants_" + individualExportFiles.size() + "individuals";
         zos.putNextEntry(new ZipEntry(exportName + ".genotype"));
-        zos.write(("#fjFile = GENOTYPE" + LINE_SEPARATOR).getBytes());
+        zos.write(("# fjFile = GENOTYPE" + LINE_SEPARATOR).getBytes());
         
         DBCursor markerCursorCopy = markerCursor.copy();
         markerCursorCopy.batchSize(nChunkSize);
@@ -226,7 +226,7 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
         warningFileWriter.close();
 
         zos.putNextEntry(new ZipEntry(exportName + ".map"));
-        zos.write(("#fjFile = MAP" + LINE_SEPARATOR).getBytes());
+        zos.write(("# fjFile = MAP" + LINE_SEPARATOR).getBytes());
 
         markerCursor.batchSize(nChunkSize);
         int nMarkerIndex = 0;
