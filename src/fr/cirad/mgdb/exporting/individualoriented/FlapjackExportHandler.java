@@ -286,7 +286,7 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
      */
     @Override
     public List<String> getStepList() {
-        return Arrays.asList(new String[]{"Exporting data to PLINK format"});
+        return Arrays.asList(new String[]{"Exporting data to Flapjack format"});
     }
 
     /**

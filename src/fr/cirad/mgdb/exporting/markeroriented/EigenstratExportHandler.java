@@ -156,9 +156,9 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
             snpFileWriter = new FileWriter(snpFile);
 
             ZipOutputStream zos = new ZipOutputStream(outputStream);
-            if (ByteArrayOutputStream.class.isAssignableFrom(outputStream.getClass())) {
-                zos.setLevel(ZipOutputStream.STORED);
-            }
+//            if (ByteArrayOutputStream.class.isAssignableFrom(outputStream.getClass())) {
+//                zos.setLevel(ZipOutputStream.STORED);
+//            }
 
             if (readyToExportFiles != null) {
                 for (String readyToExportFile : readyToExportFiles.keySet()) {
