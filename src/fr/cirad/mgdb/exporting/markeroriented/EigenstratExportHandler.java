@@ -31,7 +31,6 @@ import fr.cirad.tools.mongo.MongoTemplateManager;
 import htsjdk.variant.variantcontext.VariantContext.Type;
 
 import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
@@ -47,6 +46,7 @@ import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 import org.springframework.data.mongodb.core.MongoTemplate;
 
@@ -119,7 +119,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
      */
     @Override
     public String getExportFormatDescription() {
-        return "Exports zipped ind, snp and eigenstratgeno files, along with an optional remark-file. See <a target='_blank' href='http://genepath.med.harvard.edu/~reich/InputFileFormats.htm'>http://genepath.med.harvard.edu/~reich/InputFileFormats.htm</a> for more details";
+        return "Exports zipped ind, snp and eigenstratgeno files, along with an optional remark-file. See <a target='_blank' href='https://github.com/argriffing/eigensoft/blob/master/CONVERTF/README'>https://github.com/argriffing/eigensoft/blob/master/CONVERTF/README</a> for more details";
     }
 
     /* (non-Javadoc)
@@ -130,6 +130,11 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
         return supportedVariantTypes;
     }
 
+	@Override
+	public String getExportFileExtension() {
+		return "zip";
+	}
+	
     // public static void logMemUsage(Logger log)
     // {
     // long maxMem = Runtime.getRuntime().maxMemory()/(1024*1024);
@@ -202,6 +207,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
             short nProgress = 0, nPreviousProgress = 0;
             long nLoadedMarkerCount = 0;
 
+            ArrayList<Comparable> unassignedMarkers = new ArrayList<>();
             while (markerCursor.hasNext()) {
                 int nLoadedMarkerCountInLoop = 0;
                 Map<Comparable, String> markerChromosomalPositions = new LinkedHashMap<Comparable, String>();
@@ -210,7 +216,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
                 while (markerCursor.hasNext() && (fStartingNewChunk || nLoadedMarkerCountInLoop % nChunkSize != 0)) {
                     DBObject exportVariant = markerCursor.next();
                     DBObject refPos = (DBObject) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION);
-                    markerChromosomalPositions.put((Comparable) exportVariant.get("_id"), refPos.get(ReferencePosition.FIELDNAME_SEQUENCE) + ":" + refPos.get(ReferencePosition.FIELDNAME_START_SITE));
+                    markerChromosomalPositions.put((Comparable) exportVariant.get("_id"), refPos == null ? null : (refPos.get(ReferencePosition.FIELDNAME_SEQUENCE) + ":" + refPos.get(ReferencePosition.FIELDNAME_START_SITE)));
                     nLoadedMarkerCountInLoop++;
                     fStartingNewChunk = false;
                 }
@@ -222,9 +228,8 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
                     Comparable variantId = variant.getId();
 
                     List<String> chromAndPos = Helper.split(markerChromosomalPositions.get(variantId), ":");
-                    if (chromAndPos.size() == 0) {
-                        LOG.warn("Chromosomal position not found for marker " + variantId);
-                    }
+                    if (chromAndPos.size() == 0)
+                    	unassignedMarkers.add(variantId);
                     // LOG.debug(marker + "\t" + (chromAndPos.length == 0 ? "0" : chromAndPos[0]) + "\t" + 0 + "\t" + (chromAndPos.length == 0 ? 0l : Long.parseLong(chromAndPos[1])) + LINE_SEPARATOR);
                     if (markerSynonyms != null) {
                         Comparable syn = markerSynonyms.get(variantId);
@@ -283,7 +288,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
                                     continue; /* skip missing genotypes */
                                 }
 
-                                int gtCount = 1 + MgdbDao.getCountForKey(genotypeCounts, genotype);
+                                int gtCount = 1 + Helper.getCountForKey(genotypeCounts, genotype);
                                 if (gtCount > highestGenotypeCount) {
                                     highestGenotypeCount = gtCount;
                                     mostFrequentGenotype = genotype;
@@ -338,6 +343,9 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
             }
             zos.closeEntry();
             snpFileWriter.close();
+            
+            if (unassignedMarkers.size() > 0)
+            	LOG.info("No chromosomal position found for " + unassignedMarkers.size() + " markers " + StringUtils.join(unassignedMarkers, ", "));
             
             zos.putNextEntry(new ZipEntry(exportName + ".snp"));
             BufferedReader in = new BufferedReader(new FileReader(snpFile));

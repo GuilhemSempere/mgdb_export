@@ -83,6 +83,11 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
     public String getExportFormatDescription() {
         return "Exports data in GFF3 Format based on Sequence Ontology. See <a target='_blank' href='http://rice.bio.indiana.edu:7082/annot/gff3.html'>http://rice.bio.indiana.edu:7082/annot/gff3.html</a> and <a target='_blank' href='http://www.sequenceontology.org/resources/gff3.html'>http://www.sequenceontology.org/resources/gff3.html</a>";
     }
+    
+	@Override
+	public String getExportFileExtension() {
+		return "zip";
+	}
 
     /* (non-Javadoc)
 	 * @see fr.cirad.mgdb.exporting.markeroriented.AbstractMarkerOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.List, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, int, int, java.util.Map)
@@ -137,6 +142,7 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
         short nProgress = 0, nPreviousProgress = 0;
         long nLoadedMarkerCount = 0;
 
+        ArrayList<Comparable> unassignedMarkers = new ArrayList<>();
         while (markerCursor.hasNext()) {
             int nLoadedMarkerCountInLoop = 0;
             Map<Comparable, String> markerChromosomalPositions = new LinkedHashMap<>();
@@ -145,7 +151,7 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
             while (markerCursor.hasNext() && (fStartingNewChunk || nLoadedMarkerCountInLoop % nChunkSize != 0)) {
                 DBObject exportVariant = markerCursor.next();
                 DBObject refPos = (DBObject) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION);
-                markerChromosomalPositions.put((Comparable) exportVariant.get("_id"), refPos.get(ReferencePosition.FIELDNAME_SEQUENCE) + ":" + refPos.get(ReferencePosition.FIELDNAME_START_SITE));
+                markerChromosomalPositions.put((Comparable) exportVariant.get("_id"), refPos == null ? null : (refPos.get(ReferencePosition.FIELDNAME_SEQUENCE) + ":" + refPos.get(ReferencePosition.FIELDNAME_START_SITE) + ":" + refPos.get(ReferencePosition.FIELDNAME_END_SITE)));
                 nLoadedMarkerCountInLoop++;
                 fStartingNewChunk = false;
             }
@@ -158,15 +164,13 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
                 List<String> variantDataOrigin = new ArrayList<>();
                 Map<String, List<String>> individualGenotypes = new LinkedHashMap<>();
                 List<String> chromAndPos = Helper.split(markerChromosomalPositions.get(variantId), ":");
-                if (chromAndPos.isEmpty()) {
-                    LOG.warn("Chromosomal position not found for marker " + variantId);
-                }
-                // LOG.debug(marker + "\t" + (chromAndPos.length == 0 ? "0" : chromAndPos[0]) + "\t" + 0 + "\t" + (chromAndPos.length == 0 ? 0l : Long.parseLong(chromAndPos[1])) + LINE_SEPARATOR);
+                if (chromAndPos.isEmpty())
+                	unassignedMarkers.add(variantId);
+                
                 if (markerSynonyms != null) {
                     Comparable syn = markerSynonyms.get(variantId);
-                    if (syn != null) {
+                    if (syn != null)
                         variantId = syn;
-                    }
                 }
 
                 Collection<VariantRunData> runs = variantsAndRuns.get(variant);
@@ -205,9 +209,13 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
                     }
                 }
 
-                zos.write((chromAndPos.get(0) + "\t" + StringUtils.join(variantDataOrigin, ";") /*source*/ + "\t" + typeToOntology.get(variant.getType()) + "\t" + Long.parseLong(chromAndPos.get(1)) + "\t" + Long.parseLong(chromAndPos.get(1)) + "\t" + "." + "\t" + "+" + "\t" + "." + "\t").getBytes());
+                String refAllele = variant.getKnownAlleleList().get(0);
+                String chrom = chromAndPos.size() == 0 ? "0" : chromAndPos.get(0);
+                String start = chromAndPos.size() < 2 ? "0" : chromAndPos.get(1);
+                String end = Type.SNP.equals(variant.getType()) ? start : String.valueOf(Long.parseLong(start) + refAllele.length() - 1);
+                zos.write((chrom + "\t" + StringUtils.join(variantDataOrigin, ";") /*source*/ + "\t" + typeToOntology.get(variant.getType()) + "\t" + start + "\t" + end + "\t" + "." + "\t" + "+" + "\t" + "." + "\t").getBytes());
                 Comparable syn = markerSynonyms == null ? null : markerSynonyms.get(variant.getId());
-                zos.write(("ID=" + variant.getId() + ";" + (syn != null ? "Name=" + syn + ";" : "") + "alleles=" + StringUtils.join(variant.getKnownAlleleList(), "/") + ";" + "refallele=" + variant.getKnownAlleleList().get(0) + ";").getBytes());
+                zos.write(("ID=" + variant.getId() + ";" + (syn != null ? "Name=" + syn + ";" : "") + "alleles=" + StringUtils.join(variant.getKnownAlleleList(), "/") + ";" + "refallele=" + refAllele + ";").getBytes());
 
                 for (int j = 0; j < individualList.size(); j++ /* we use this list because it has the proper ordering*/) {
 
@@ -250,7 +258,7 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
                                 sum += countValue;
                             }
 
-                            int gtCount = 1 + MgdbDao.getCountForKey(genotypeCounts, genotype);
+                            int gtCount = 1 + Helper.getCountForKey(genotypeCounts, genotype);
                             if (gtCount > highestGenotypeCount) {
                                 highestGenotypeCount = gtCount;
                                 mostFrequentGenotype = genotype;
@@ -292,6 +300,9 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
             }
         }
         zos.closeEntry();
+        
+        if (unassignedMarkers.size() > 0)
+        	LOG.info("No chromosomal position found for " + unassignedMarkers.size() + " markers " + StringUtils.join(unassignedMarkers, ", "));
 
         warningFileWriter.close();
         if (warningFile.length() > 0) {

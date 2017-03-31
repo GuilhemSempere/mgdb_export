@@ -65,6 +65,11 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 		return "Exports data in BED Format. See <a target='_blank' href='http://genome.ucsc.edu/FAQ/FAQformat.html#format1'>http://genome.ucsc.edu/FAQ/FAQformat.html#format1</a> for more details";
 	}
 	
+	@Override
+	public String getExportFileExtension() {
+		return "zip";
+	}
+	
 	/* (non-Javadoc)
 	 * @see fr.cirad.mgdb.exporting.IExportHandler#getStepList()
 	 */
@@ -115,15 +120,21 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 			while (markerCursor.hasNext() && (fStartingNewChunk || nLoadedMarkerCountInLoop%nChunkSize != 0)) {
 				DBObject exportVariant = markerCursor.next();
 				DBObject refPos = (DBObject) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION);
-				markerChromosomalPositions.put((Comparable) exportVariant.get("_id"), refPos.get(ReferencePosition.FIELDNAME_SEQUENCE) + ":" + refPos.get(ReferencePosition.FIELDNAME_START_SITE));
+				markerChromosomalPositions.put((Comparable) exportVariant.get("_id"), refPos == null ? null : (refPos.get(ReferencePosition.FIELDNAME_SEQUENCE) + ":" + refPos.get(ReferencePosition.FIELDNAME_START_SITE)));
 				nLoadedMarkerCountInLoop++;
 				fStartingNewChunk = false;
 			}
 
 			for (Comparable variantId : markerChromosomalPositions.keySet()) // read data and write results into temporary files (one per sample)
 			{
-				String[] chromAndPos = markerChromosomalPositions.get(variantId).split(":");
-				zos.write((chromAndPos[0] + "\t" + (Long.parseLong(chromAndPos[1])-1)  + "\t" + (Long.parseLong(chromAndPos[1])-1) + "\t" + variantId + "\t" + "0" + "\t" + "+").getBytes());
+				String refPos = markerChromosomalPositions.get(variantId);
+				if (refPos != null)
+				{
+					String[] chromAndPos = refPos.split(":");
+					zos.write((chromAndPos[0] + "\t" + (Long.parseLong(chromAndPos[1])-1)  + "\t" + (Long.parseLong(chromAndPos[1])-1) + "\t" + variantId + "\t" + "0" + "\t" + "+").getBytes());
+				}
+				else
+					zos.write(("0\t0\t0\t" + variantId + "\t" + "0" + "\t" + "+").getBytes());
 				zos.write((LINE_SEPARATOR).getBytes());
 			}
 			

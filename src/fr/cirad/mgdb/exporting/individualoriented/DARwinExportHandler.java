@@ -44,11 +44,10 @@ import com.mongodb.DBObject;
 
 import fr.cirad.mgdb.model.mongo.maintypes.GenotypingProject;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
-import fr.cirad.mgdb.model.mongodao.MgdbDao;
+import fr.cirad.tools.Helper;
 import fr.cirad.tools.ProgressIndicator;
 import fr.cirad.tools.mongo.MongoTemplateManager;
 
-// TODO: Auto-generated Javadoc
 /**
  * The Class DARwinExportHandler.
  */
@@ -82,6 +81,11 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
     public List<String> getStepList() {
         return Arrays.asList(new String[]{"Exporting data to DARWIN format"});
     }
+    
+	@Override
+	public String getExportFileExtension() {
+		return "zip";
+	}
 
     /* (non-Javadoc)
 	 * @see fr.cirad.mgdb.exporting.individualoriented.AbstractIndividualOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.Collection, boolean, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, java.util.Map)
@@ -175,7 +179,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
                     nMarkerIndex = 0;
 
                     while ((line = in.readLine()) != null) {
-                        List<String> genotypes = MgdbDao.split(line, "|");
+                        List<String> genotypes = Helper.split(line, "|");
                         HashMap<Object, Integer> genotypeCounts = new HashMap<Object, Integer>();	// will help us to keep track of missing genotypes
                         int highestGenotypeCount = 0;
                         String mostFrequentGenotype = null;
@@ -184,7 +188,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
                                 continue;	/* skip missing genotypes */
                             }
 
-                            int gtCount = 1 + MgdbDao.getCountForKey(genotypeCounts, genotype);
+                            int gtCount = 1 + Helper.getCountForKey(genotypeCounts, genotype);
                             if (gtCount > highestGenotypeCount) {
                                 highestGenotypeCount = gtCount;
                                 mostFrequentGenotype = genotype;

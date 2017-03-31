@@ -22,7 +22,7 @@ import fr.cirad.mgdb.model.mongo.maintypes.Individual;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
 import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
-import fr.cirad.mgdb.model.mongodao.MgdbDao;
+import fr.cirad.tools.Helper;
 import fr.cirad.tools.ProgressIndicator;
 import fr.cirad.tools.mongo.MongoTemplateManager;
 import htsjdk.variant.variantcontext.VariantContext.Type;
@@ -43,6 +43,7 @@ import java.util.TreeMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 import org.springframework.data.mongodb.core.MongoTemplate;
 
@@ -93,6 +94,11 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
     public List<String> getSupportedVariantTypes() {
         return supportedVariantTypes;
     }
+    
+	@Override
+	public String getExportFileExtension() {
+		return "zip";
+	}
 
     /* (non-Javadoc)
 	 * @see fr.cirad.mgdb.exporting.individualoriented.AbstractIndividualOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.Collection, boolean, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, java.util.Map)
@@ -144,7 +150,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	
 	                int nMarkerIndex = 0;
 	                while ((line = in.readLine()) != null) {
-	                    List<String> genotypes = MgdbDao.split(line, "|");
+	                    List<String> genotypes = Helper.split(line, "|");
 	                    HashMap<Object, Integer> genotypeCounts = new HashMap<Object, Integer>();	// will help us to keep track of missing genotypes
 	                    int highestGenotypeCount = 0;
 	                    String mostFrequentGenotype = null;
@@ -153,7 +159,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	                            continue;	/* skip missing genotypes */
 	                        }
 	
-	                        int gtCount = 1 + MgdbDao.getCountForKey(genotypeCounts, genotype);
+	                        int gtCount = 1 + Helper.getCountForKey(genotypeCounts, genotype);
 	                        if (gtCount > highestGenotypeCount) {
 	                            highestGenotypeCount = gtCount;
 	                            mostFrequentGenotype = genotype;
@@ -221,16 +227,15 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 
         markerCursor.batchSize(nChunkSize);
         int nMarkerIndex = 0;
+        ArrayList<Comparable> unassignedMarkers = new ArrayList<>();
         while (markerCursor.hasNext()) {
             DBObject exportVariant = markerCursor.next();
             DBObject refPos = (DBObject) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION);
+            Long pos = refPos == null ? null : ((Number) refPos.get(ReferencePosition.FIELDNAME_START_SITE)).longValue();
             Comparable markerId = (Comparable) exportVariant.get("_id");
-            String chrom = (String) refPos.get(ReferencePosition.FIELDNAME_SEQUENCE);
-            Long pos = ((Number) refPos.get(ReferencePosition.FIELDNAME_START_SITE)).longValue();
-
-            if (chrom == null) {
-                LOG.warn("Chromosomal position not found for marker " + markerId);
-            }
+            String chrom = refPos == null ? null : (String) refPos.get(ReferencePosition.FIELDNAME_SEQUENCE);
+            if (chrom == null)
+            	unassignedMarkers.add(markerId);
             Comparable exportedId = markerSynonyms == null ? markerId : markerSynonyms.get(markerId);
             zos.write(((chrom == null ? "0" : chrom) + " " + exportedId + " " + 0 + " " + (pos == null ? 0 : pos) + LINE_SEPARATOR).getBytes());
 
@@ -247,6 +252,9 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
             nMarkerIndex++;
         }
         zos.closeEntry();
+        
+        if (unassignedMarkers.size() > 0)
+        	LOG.info("No chromosomal position found for " + unassignedMarkers.size() + " markers " + StringUtils.join(unassignedMarkers, ", "));
 
         if (warningFile.length() > 0) {
             zos.putNextEntry(new ZipEntry(exportName + "-REMARKS.txt"));

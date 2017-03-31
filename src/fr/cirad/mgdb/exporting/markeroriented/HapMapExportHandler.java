@@ -25,6 +25,7 @@ import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
 import fr.cirad.mgdb.model.mongo.subtypes.SampleGenotype;
 import fr.cirad.mgdb.model.mongo.subtypes.SampleId;
 import fr.cirad.mgdb.model.mongodao.MgdbDao;
+import fr.cirad.tools.Helper;
 import fr.cirad.tools.ProgressIndicator;
 import fr.cirad.tools.mongo.MongoTemplateManager;
 import htsjdk.variant.variantcontext.VariantContext.Type;
@@ -96,6 +97,11 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
     public List<String> getSupportedVariantTypes() {
         return supportedVariantTypes;
     }
+    
+	@Override
+	public String getExportFileExtension() {
+		return "zip";
+	}
 
     /* (non-Javadoc)
  * @see fr.cirad.mgdb.exporting.markeroriented.AbstractMarkerOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.List, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, int, int, java.util.Map)
@@ -155,7 +161,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
             while (markerCursor.hasNext() && (fStartingNewChunk || nLoadedMarkerCountInLoop % nChunkSize != 0)) {
                 DBObject exportVariant = markerCursor.next();
                 DBObject refPos = (DBObject) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION);
-                markerChromosomalPositions.put((Comparable) exportVariant.get("_id"), refPos.get(ReferencePosition.FIELDNAME_SEQUENCE) + ":" + refPos.get(ReferencePosition.FIELDNAME_START_SITE));
+                markerChromosomalPositions.put((Comparable) exportVariant.get("_id"), refPos == null ? null : (refPos.get(ReferencePosition.FIELDNAME_SEQUENCE) + ":" + refPos.get(ReferencePosition.FIELDNAME_START_SITE)));
                 nLoadedMarkerCountInLoop++;
                 fStartingNewChunk = false;
             }
@@ -175,8 +181,9 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
                 boolean fIsSNP = variant.getType().equals(Type.SNP.toString());
                 byte[] missingGenotype = ("\t" + "NN").getBytes();
 
-                String[] chromAndPos = markerChromosomalPositions.get(variant.getId()).split(":");
-                zos.write(((variantId == null ? variant.getId() : variantId) + "\t" + StringUtils.join(variant.getKnownAlleleList(), "/") + "\t" + chromAndPos[0] + "\t" + Long.parseLong(chromAndPos[1]) + "\t" + "+").getBytes());
+                String refPos = markerChromosomalPositions.get(variant.getId());
+                String[] chromAndPos = refPos == null ? null : refPos.split(":");
+                zos.write(((variantId == null ? variant.getId() : variantId) + "\t" + StringUtils.join(variant.getKnownAlleleList(), "/") + "\t" + (chromAndPos == null ? 0 : chromAndPos[0]) + "\t" + (chromAndPos == null ? 0 : Long.parseLong(chromAndPos[1])) + "\t" + "+").getBytes());
                 for (int j = 0; j < 6; j++) {
                     zos.write(("\t" + "NA").getBytes());
                 }
@@ -231,7 +238,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
                                 continue; /* skip this sample because its DP is under the threshold */
                             }
 
-                            int gtCount = 1 + MgdbDao.getCountForKey(genotypeCounts, genotype);
+                            int gtCount = 1 + Helper.getCountForKey(genotypeCounts, genotype);
                             if (gtCount > highestGenotypeCount) {
                                 highestGenotypeCount = gtCount;
                                 mostFrequentGenotype = genotype;

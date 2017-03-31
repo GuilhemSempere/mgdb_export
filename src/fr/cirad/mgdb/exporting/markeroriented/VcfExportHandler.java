@@ -108,6 +108,11 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 	{
 		return Arrays.asList(new String[] {"Creating sequence list", "Exporting data to VCF format"});
 	}
+	
+	@Override
+	public String getExportFileExtension() {
+		return "zip";
+	}
 
 	/**
 	 * Creates the sam sequence dictionary.
@@ -297,7 +302,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 					fStartingNewChunk = false;
 				}
 
-				LinkedHashMap<VariantData, Collection<VariantRunData>> variantsAndRuns = MgdbDao.getSampleGenotypes(mongoTemplate, sampleIDs, currentMarkers, true, null /*new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_SEQUENCE).and(new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_START_SITE))*/);	// query mongo db for matching genotypes
+				LinkedHashMap<VariantData, Collection<VariantRunData>> variantsAndRuns = MgdbDao.getSampleGenotypes(mongoTemplate, sampleIDs, currentMarkers, true, null /*new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ReferencePosition.FIELDNAME_SEQUENCE).and(new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ReferencePosition.FIELDNAME_START_SITE))*/);	// query mongo db for matching genotypes
 				for (VariantData variant : variantsAndRuns.keySet())
 				{
 					VariantContext vc = variant.toVariantContext(variantsAndRuns.get(variant), !ObjectId.isValid(variant.getId().toString()), sampleIDToIndividualIdMap, phasingIDsBySample, nMinimumGenotypeQuality, nMinimumReadDepth, warningFileWriter, markerSynonyms == null ? variant.getId() : markerSynonyms.get(variant.getId()));
