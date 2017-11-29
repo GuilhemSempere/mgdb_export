@@ -247,7 +247,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
                                     individualGenotypes.put(individualId, storedIndividualGenotypes);
                                 }
                                 
-    							if (!VariantData.gtPassesAnnotationFilters(individualId, sampleGenotype, individuals1, annotationFieldThresholds, individuals2, annotationFieldThresholds2))
+    							if (!VariantData.gtPassesVcfAnnotationFilters(individualId, sampleGenotype, individuals1, annotationFieldThresholds, individuals2, annotationFieldThresholds2))
     								continue;	// skip genotype
 
                                 storedIndividualGenotypes.add(sampleGenotype.getCode());

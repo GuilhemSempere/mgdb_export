@@ -180,7 +180,7 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
                             SampleGenotype sampleGenotype = run.getSampleGenotypes().get(sampleIndex);
                             String individualName = individuals.get(sampleIDs.indexOf(new SampleId(run.getId().getProjectId(), sampleIndex))).getId();
 
-							if (!VariantData.gtPassesAnnotationFilters(individualName, sampleGenotype, individuals1, annotationFieldThresholds, individuals2, annotationFieldThresholds2))
+							if (!VariantData.gtPassesVcfAnnotationFilters(individualName, sampleGenotype, individuals1, annotationFieldThresholds, individuals2, annotationFieldThresholds2))
 								continue;	// skip genotype
 
                             String gtCode = sampleGenotype.getCode();

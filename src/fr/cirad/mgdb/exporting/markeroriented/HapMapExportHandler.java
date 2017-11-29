@@ -200,7 +200,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
                             SampleGenotype sampleGenotype = run.getSampleGenotypes().get(sampleIndex);
                             String individualId = individuals.get(sampleIDs.indexOf(new SampleId(run.getId().getProjectId(), sampleIndex))).getId();
                             
-							if (!VariantData.gtPassesAnnotationFilters(individualId, sampleGenotype, individuals1, annotationFieldThresholds, individuals2, annotationFieldThresholds2))
+							if (!VariantData.gtPassesVcfAnnotationFilters(individualId, sampleGenotype, individuals1, annotationFieldThresholds, individuals2, annotationFieldThresholds2))
 								continue;	// skip genotype
 							
                             String gtCode = run.getSampleGenotypes().get(sampleIndex).getCode();
