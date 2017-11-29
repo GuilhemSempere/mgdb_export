@@ -28,7 +28,7 @@ import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
 import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
 import fr.cirad.mgdb.model.mongo.subtypes.SampleId;
 import fr.cirad.mgdb.model.mongodao.MgdbDao;
-import fr.cirad.tools.AlphaNumericStringComparator;
+import fr.cirad.tools.AlphaNumericComparator;
 import fr.cirad.tools.ProgressIndicator;
 import fr.cirad.tools.mongo.MongoTemplateManager;
 import htsjdk.samtools.SAMSequenceDictionary;
@@ -60,9 +60,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.log4j.Logger;
 import org.bson.types.ObjectId;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -151,8 +153,18 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 	 * @see fr.cirad.mgdb.exporting.markeroriented.AbstractMarkerOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.List, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, int, int, java.util.Map)
 	 */
 	@Override
-	public void exportData(OutputStream outputStream, String sModule, List<SampleId> sampleIDs, ProgressIndicator progress, DBCursor markerCursor, Map<Comparable, Comparable> markerSynonyms, int nMinimumGenotypeQuality, int nMinimumReadDepth, Map<String, InputStream> readyToExportFiles) throws Exception
+	public void exportData(OutputStream outputStream, String sModule, List<SampleId> sampleIDs1, List<SampleId> sampleIDs2, ProgressIndicator progress, DBCursor markerCursor, Map<Comparable, Comparable> markerSynonyms, HashMap<String, Integer> annotationFieldThresholds, HashMap<String, Integer> annotationFieldThresholds2, Map<String, InputStream> readyToExportFiles) throws Exception
 	{
+		List<String> individuals1 = getIndividualsFromSamples(sModule, sampleIDs1).stream().map(ind -> ind.getId()).collect(Collectors.toList());	
+		List<String> individuals2 = getIndividualsFromSamples(sModule, sampleIDs2).stream().map(ind -> ind.getId()).collect(Collectors.toList());
+
+		ArrayList<SampleId> sampleIDs = (ArrayList<SampleId>) CollectionUtils.union(sampleIDs1, sampleIDs2);
+		List<Individual> individuals = getIndividualsFromSamples(sModule, sampleIDs);
+		LinkedHashMap<SampleId, String> sampleIDToIndividualIdMap = new LinkedHashMap<SampleId, String>();
+		for (int i=0; i<sampleIDs.size(); i++)
+			sampleIDToIndividualIdMap.put(sampleIDs.get(i), individuals.get(i).getId());
+		Collections.sort(individuals, new AlphaNumericComparator<Individual>());	// from now on it will have the proper ordering (until then we needed the ordering to remain consistent wtih that of SampleIDs)
+		
 		Integer projectId = null;
 		for (SampleId spId : sampleIDs)
 		{
@@ -186,18 +198,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				zos.closeEntry();
 			}
 
-		LinkedHashMap<SampleId, String> sampleIDToIndividualIdMap = new LinkedHashMap<SampleId, String>();
-		ArrayList<String> individualList = new ArrayList<String>();
-		List<Individual> individuals = getIndividualsFromSamples(sModule, sampleIDs);
-		for (int i=0; i<sampleIDs.size(); i++) {
-			String individualId = individuals.get(i).getId();
-			sampleIDToIndividualIdMap.put(sampleIDs.get(i), individualId);
-			if (!individualList.contains(individualId)) {
-				individualList.add(individualId);
-			}
-		}
-
-		String exportName = sModule + "_" + markerCount + "variants_" + individualList.size() + "individuals";
+		String exportName = sModule + "_" + markerCount + "variants_" + individuals.size() + "individuals";
 
 		int avgObjSize = (Integer) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
 		int nQueryChunkSize = nMaxChunkSizeInMb*1024*1024 / avgObjSize;
@@ -227,7 +228,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				markerCursorCopy.close();
 			}
 
-			Collections.sort(distinctSequenceNames, new AlphaNumericStringComparator());
+			Collections.sort(distinctSequenceNames, new AlphaNumericComparator());
 			SAMSequenceDictionary dict = createSAMSequenceDictionary(sModule, distinctSequenceNames);
 			writer = new CustomVCFWriter(null, zos, dict, false, false, true);
 //			VariantContextWriterBuilder vcwb = new VariantContextWriterBuilder();
@@ -276,7 +277,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 			}
 			headerCursor.close();
 
-			VCFHeader header = new VCFHeader(headerLines, individualList);
+			VCFHeader header = new VCFHeader(headerLines, individuals.stream().map(ind -> ind.getId()).collect(Collectors.toList()));
 			header.setWriteCommandLine(fWriteCommandLine);
 			header.setWriteEngineHeaders(fWriteEngineHeaders);
 			writer.writeHeader(header);
@@ -305,7 +306,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				LinkedHashMap<VariantData, Collection<VariantRunData>> variantsAndRuns = MgdbDao.getSampleGenotypes(mongoTemplate, sampleIDs, currentMarkers, true, null /*new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ReferencePosition.FIELDNAME_SEQUENCE).and(new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ReferencePosition.FIELDNAME_START_SITE))*/);	// query mongo db for matching genotypes
 				for (VariantData variant : variantsAndRuns.keySet())
 				{
-					VariantContext vc = variant.toVariantContext(variantsAndRuns.get(variant), !ObjectId.isValid(variant.getId().toString()), sampleIDToIndividualIdMap, phasingIDsBySample, nMinimumGenotypeQuality, nMinimumReadDepth, warningFileWriter, markerSynonyms == null ? variant.getId() : markerSynonyms.get(variant.getId()));
+					VariantContext vc = variant.toVariantContext(variantsAndRuns.get(variant), !ObjectId.isValid(variant.getId().toString()), sampleIDToIndividualIdMap, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? variant.getId() : markerSynonyms.get(variant.getId()));
 					try
 					{
 						writer.add(vc);
@@ -365,8 +366,18 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		}
 	}
 	
-	public void exportData_new(OutputStream outputStream, String sModule, List<SampleId> sampleIDs, ProgressIndicator progress, DBCursor markerCursor, Map<Comparable, Comparable> markerSynonyms, int nMinimumGenotypeQuality, int nMinimumReadDepth, Map<String, InputStream> readyToExportFiles) throws Exception
+	public void exportData_new(OutputStream outputStream, String sModule, List<SampleId> sampleIDs1, List<SampleId> sampleIDs2, ProgressIndicator progress, DBCursor markerCursor, Map<Comparable, Comparable> markerSynonyms, HashMap<String, Integer> annotationFieldThresholds, HashMap<String, Integer> annotationFieldThresholds2, Map<String, InputStream> readyToExportFiles) throws Exception
 	{
+		List<String> individuals1 = getIndividualsFromSamples(sModule, sampleIDs1).stream().map(ind -> ind.getId()).collect(Collectors.toList());	
+		List<String> individuals2 = getIndividualsFromSamples(sModule, sampleIDs2).stream().map(ind -> ind.getId()).collect(Collectors.toList());
+
+		ArrayList<SampleId> sampleIDs = (ArrayList<SampleId>) CollectionUtils.union(sampleIDs1, sampleIDs2);
+		List<Individual> individuals = getIndividualsFromSamples(sModule, sampleIDs);
+		LinkedHashMap<SampleId, String> sampleIDToIndividualIdMap = new LinkedHashMap<SampleId, String>();
+		for (int i=0; i<sampleIDs.size(); i++)
+			sampleIDToIndividualIdMap.put(sampleIDs.get(i), individuals.get(i).getId());
+		Collections.sort(individuals, new AlphaNumericComparator<Individual>());	// from now on it will have the proper ordering (until then we needed the ordering to remain consistent wtih that of SampleIDs)
+
 		Integer projectId = null;
 		for (SampleId spId : sampleIDs)
 		{
@@ -400,18 +411,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				zos.closeEntry();
 			}
 
-		LinkedHashMap<SampleId, String> sampleIDToIndividualIdMap = new LinkedHashMap<SampleId, String>();
-		ArrayList<String> individualList = new ArrayList<String>();
-		List<Individual> individuals = getIndividualsFromSamples(sModule, sampleIDs);
-		for (int i=0; i<sampleIDs.size(); i++) {
-			String individualId = individuals.get(i).getId();
-			sampleIDToIndividualIdMap.put(sampleIDs.get(i), individualId);
-			if (!individualList.contains(individualId)) {
-				individualList.add(individualId);
-			}
-		}
-
-		String exportName = sModule + "_" + markerCount + "variants_" + individualList.size() + "individuals";
+		String exportName = sModule + "_" + markerCount + "variants_" + individuals.size() + "individuals";
 
 		int avgObjSize = (Integer) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
 		int nQueryChunkSize = nMaxChunkSizeInMb*1024*1024 / avgObjSize;
@@ -441,7 +441,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				markerCursorCopy.close();
 			}
 
-			Collections.sort(distinctSequenceNames, new AlphaNumericStringComparator());
+			Collections.sort(distinctSequenceNames, new AlphaNumericComparator());
 			SAMSequenceDictionary dict = createSAMSequenceDictionary(sModule, distinctSequenceNames);
 			writer = new CustomVCFWriter(null, zos, dict, false, false, true);
 //			VariantContextWriterBuilder vcwb = new VariantContextWriterBuilder();
@@ -490,7 +490,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 			}
 			headerCursor.close();
 
-			VCFHeader header = new VCFHeader(headerLines, individualList);
+			VCFHeader header = new VCFHeader(headerLines, individuals.stream().map(ind -> ind.getId()).collect(Collectors.toList()));
 			header.setWriteCommandLine(fWriteCommandLine);
 			header.setWriteEngineHeaders(fWriteEngineHeaders);
 			writer.writeHeader(header);
@@ -507,7 +507,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 						if (!progress.hasAborted())
 							try
 							{
-								VariantContext vc = variant.toVariantContext(variantsAndRuns.get(variant), !ObjectId.isValid(variant.getId().toString()), sampleIDToIndividualIdMap, phasingIDsBySample, nMinimumGenotypeQuality, nMinimumReadDepth, warningFileWriter, markerSynonyms == null ? variant.getId() : markerSynonyms.get(variant.getId()));
+								VariantContext vc = variant.toVariantContext(variantsAndRuns.get(variant), !ObjectId.isValid(variant.getId().toString()), sampleIDToIndividualIdMap, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? variant.getId() : markerSynonyms.get(variant.getId()));
 								finalVariantContextWriter.add(vc);
 							}
 							catch (Exception e)

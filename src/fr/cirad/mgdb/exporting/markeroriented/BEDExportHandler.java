@@ -20,12 +20,15 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.log4j.Logger;
 import org.springframework.data.mongodb.core.MongoTemplate;
 
@@ -82,7 +85,7 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 	 * @see fr.cirad.mgdb.exporting.markeroriented.AbstractMarkerOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.List, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, int, int, java.util.Map)
 	 */
 	@Override
-	public void exportData(OutputStream outputStream, String sModule, List<SampleId> sampleIDs, ProgressIndicator progress, DBCursor markerCursor, Map<Comparable, Comparable> markerSynonyms, int nMinimumGenotypeQuality, int nMinimumReadDepth, Map<String, InputStream> readyToExportFiles) throws Exception {
+	public void exportData(OutputStream outputStream, String sModule, List<SampleId> sampleIDs1, List<SampleId> sampleIDs2, ProgressIndicator progress, DBCursor markerCursor, Map<Comparable, Comparable> markerSynonyms, HashMap<String, Integer> annotationFieldThresholds, HashMap<String, Integer> annotationFieldThresholds2, Map<String, InputStream> readyToExportFiles) throws Exception {
 		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
 		ZipOutputStream zos = new ZipOutputStream(outputStream);
 		
@@ -102,11 +105,10 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 				
 		int markerCount = markerCursor.count();
 		
-		List<String> selectedIndividualList = new ArrayList<String>();
-		for (Individual ind : getIndividualsFromSamples(sModule, sampleIDs))
-			selectedIndividualList.add(ind.getId());
-		
-		String exportName = sModule + "_" + markerCount + "variants_" + selectedIndividualList.size() + "individuals";
+		ArrayList<SampleId> sampleIDs = (ArrayList<SampleId>) CollectionUtils.union(sampleIDs1, sampleIDs2);
+		List<Individual> individuals = getIndividualsFromSamples(sModule, sampleIDs);
+
+		String exportName = sModule + "_" + markerCount + "variants_" + individuals.size() + "individuals";
 		zos.putNextEntry(new ZipEntry(exportName + ".bed"));
 		
 		short nProgress = 0, nPreviousProgress = 0;	

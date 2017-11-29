@@ -36,9 +36,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -53,6 +55,7 @@ import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
 import fr.cirad.mgdb.model.mongo.subtypes.SampleGenotype;
 import fr.cirad.mgdb.model.mongo.subtypes.SampleId;
 import fr.cirad.mgdb.model.mongodao.MgdbDao;
+import fr.cirad.tools.AlphaNumericComparator;
 import fr.cirad.tools.Helper;
 import fr.cirad.tools.ProgressIndicator;
 import fr.cirad.tools.mongo.MongoTemplateManager;
@@ -93,7 +96,13 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 	 * @see fr.cirad.mgdb.exporting.markeroriented.AbstractMarkerOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.List, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, int, int, java.util.Map)
      */
     @Override
-    public void exportData(OutputStream outputStream, String sModule, List<SampleId> sampleIDs, ProgressIndicator progress, DBCursor markerCursor, Map<Comparable, Comparable> markerSynonyms, int nMinimumGenotypeQuality, int nMinimumReadDepth, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, List<SampleId> sampleIDs1, List<SampleId> sampleIDs2, ProgressIndicator progress, DBCursor markerCursor, Map<Comparable, Comparable> markerSynonyms, HashMap<String, Integer> annotationFieldThresholds, HashMap<String, Integer> annotationFieldThresholds2, Map<String, InputStream> readyToExportFiles) throws Exception {
+		List<String> individuals1 = getIndividualsFromSamples(sModule, sampleIDs1).stream().map(ind -> ind.getId()).collect(Collectors.toList());	
+		List<String> individuals2 = getIndividualsFromSamples(sModule, sampleIDs2).stream().map(ind -> ind.getId()).collect(Collectors.toList());
+
+		ArrayList<SampleId> sampleIDs = (ArrayList<SampleId>) CollectionUtils.union(sampleIDs1, sampleIDs2);
+		List<Individual> individuals = getIndividualsFromSamples(sModule, sampleIDs);
+	
         MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         ZipOutputStream zos = new ZipOutputStream(outputStream);
 
@@ -116,16 +125,7 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 
         int markerCount = markerCursor.count();
 
-        List<Individual> individuals = getIndividualsFromSamples(sModule, sampleIDs);
-        ArrayList<String> individualList = new ArrayList<>();
-        for (int i = 0; i < sampleIDs.size(); i++) {
-            Individual individual = individuals.get(i);
-            if (!individualList.contains(individual.getId())) {
-                individualList.add(individual.getId());
-            }
-        }
-
-        String exportName = sModule + "_" + markerCount + "variants_" + individualList.size() + "individuals";
+        String exportName = sModule + "_" + markerCount + "variants_" + individuals.size() + "individuals";
         zos.putNextEntry(new ZipEntry(exportName + ".gff3"));
         String header = "##gff-version 3" + LINE_SEPARATOR;
         zos.write(header.getBytes());
@@ -162,7 +162,7 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
             {
                 Comparable variantId = variant.getId();
                 List<String> variantDataOrigin = new ArrayList<>();
-                Map<String, List<String>> individualGenotypes = new LinkedHashMap<>();
+                Map<String, List<String>> individualGenotypes = new TreeMap<>(new AlphaNumericComparator<String>());
                 List<String> chromAndPos = Helper.split(markerChromosomalPositions.get(variantId), ":");
                 if (chromAndPos.isEmpty())
                 	unassignedMarkers.add(variantId);
@@ -178,31 +178,16 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
                     for (VariantRunData run : runs) {
                         for (Integer sampleIndex : run.getSampleGenotypes().keySet()) {
                             SampleGenotype sampleGenotype = run.getSampleGenotypes().get(sampleIndex);
-                            String individualId = individuals.get(sampleIDs.indexOf(new SampleId(run.getId().getProjectId(), sampleIndex))).getId();
+                            String individualName = individuals.get(sampleIDs.indexOf(new SampleId(run.getId().getProjectId(), sampleIndex))).getId();
 
-                            Integer gq = null;
-                            try {
-                                gq = (Integer) sampleGenotype.getAdditionalInfo().get(VariantData.GT_FIELD_GQ);
-                            } catch (Exception ignored) {
-                            }
-                            if (gq != null && gq < nMinimumGenotypeQuality) {
-                                continue;
-                            }
-
-                            Integer dp = null;
-                            try {
-                                dp = (Integer) sampleGenotype.getAdditionalInfo().get(VariantData.GT_FIELD_DP);
-                            } catch (Exception ignored) {
-                            }
-                            if (dp != null && dp < nMinimumReadDepth) {
-                                continue;
-                            }
+							if (!VariantData.gtPassesAnnotationFilters(individualName, sampleGenotype, individuals1, annotationFieldThresholds, individuals2, annotationFieldThresholds2))
+								continue;	// skip genotype
 
                             String gtCode = sampleGenotype.getCode();
-                            List<String> storedIndividualGenotypes = individualGenotypes.get(individualId);
+                            List<String> storedIndividualGenotypes = individualGenotypes.get(individualName);
                             if (storedIndividualGenotypes == null) {
                                 storedIndividualGenotypes = new ArrayList<>();
-                                individualGenotypes.put(individualId, storedIndividualGenotypes);
+                                individualGenotypes.put(individualName, storedIndividualGenotypes);
                             }
                             storedIndividualGenotypes.add(gtCode);
                         }
@@ -217,15 +202,13 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
                 Comparable syn = markerSynonyms == null ? null : markerSynonyms.get(variant.getId());
                 zos.write(("ID=" + variant.getId() + ";" + (syn != null ? "Name=" + syn + ";" : "") + "alleles=" + StringUtils.join(variant.getKnownAlleleList(), "/") + ";" + "refallele=" + refAllele + ";").getBytes());
 
-                for (int j = 0; j < individualList.size(); j++ /* we use this list because it has the proper ordering*/) {
-
+                for (String individualId : individualGenotypes.keySet() /* we use this object because it has the proper ordering*/) {
                     NumberFormat nf = NumberFormat.getInstance(Locale.US);
                     nf.setMaximumFractionDigits(4);
                     HashMap<String, Integer> compt1 = new HashMap<>();
                     int highestGenotypeCount = 0;
                     int sum = 0;
 
-                    String individualId = individualList.get(j);
                     List<String> genotypes = individualGenotypes.get(individualId);
                     HashMap<Object, Integer> genotypeCounts = new HashMap<>(); // will help us to keep track of missing genotypes
 

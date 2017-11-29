@@ -25,6 +25,7 @@ import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
 import fr.cirad.mgdb.model.mongo.subtypes.SampleGenotype;
 import fr.cirad.mgdb.model.mongo.subtypes.SampleId;
 import fr.cirad.mgdb.model.mongodao.MgdbDao;
+import fr.cirad.tools.AlphaNumericComparator;
 import fr.cirad.tools.Helper;
 import fr.cirad.tools.ProgressIndicator;
 import fr.cirad.tools.mongo.MongoTemplateManager;
@@ -39,13 +40,17 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -148,7 +153,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 	 * @see fr.cirad.mgdb.exporting.markeroriented.AbstractMarkerOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.List, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, int, int, java.util.Map)
      */
     @Override
-    public void exportData(OutputStream outputStream, String sModule, List<SampleId> sampleIDs, ProgressIndicator progress, DBCursor markerCursor, Map<Comparable, Comparable> markerSynonyms, int nMinimumGenotypeQuality, int nMinimumReadDepth, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, List<SampleId> sampleIDs1, List<SampleId> sampleIDs2, ProgressIndicator progress, DBCursor markerCursor, Map<Comparable, Comparable> markerSynonyms, HashMap<String, Integer> annotationFieldThresholds, HashMap<String, Integer> annotationFieldThresholds2, Map<String, InputStream> readyToExportFiles) throws Exception {
         // long before = System.currentTimeMillis();
 
         File warningFile = File.createTempFile("export_warnings_", "");
@@ -182,23 +187,13 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
             MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
             int markerCount = markerCursor.count();
 
-            List<Individual> individuals = getIndividualsFromSamples(sModule, sampleIDs);
+    		List<String> individuals1 = getIndividualsFromSamples(sModule, sampleIDs1).stream().map(ind -> ind.getId()).collect(Collectors.toList());	
+    		List<String> individuals2 = getIndividualsFromSamples(sModule, sampleIDs2).stream().map(ind -> ind.getId()).collect(Collectors.toList());
 
-            ArrayList<String> individualList = new ArrayList<String>();
-            StringBuffer indFileContents = new StringBuffer();
+    		ArrayList<SampleId> sampleIDs = (ArrayList<SampleId>) CollectionUtils.union(sampleIDs1, sampleIDs2);
+    		List<Individual> individuals = getIndividualsFromSamples(sModule, sampleIDs);
 
-            for (int i = 0; i < sampleIDs.size(); i++) {
-                Individual individual = individuals.get(i);
-                if (!individualList.contains(individual.getId())) {
-                    individualList.add(individual.getId());
-                    indFileContents.append(individual.getId() + "\t" + getIndividualGenderCode(sModule, individual.getId()) + "\t" + (individual.getPopulation() == null ? "." : individual.getPopulation()) + LINE_SEPARATOR);
-                }
-            }
-
-            String exportName = sModule + "_" + markerCount + "variants_" + individualList.size() + "individuals";
-            zos.putNextEntry(new ZipEntry(exportName + ".ind"));
-            zos.write(indFileContents.toString().getBytes());
-            zos.closeEntry();
+            String exportName = sModule + "_" + markerCount + "variants_" + individuals.size() + "individuals";
             
             zos.putNextEntry(new ZipEntry(exportName + ".eigenstratgeno"));
 
@@ -239,92 +234,83 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
                     }
                     snpFileWriter.write(variantId + "\t" + (chromAndPos.size() == 0 ? "0" : chromAndPos.get(0)) + "\t" + 0 + "\t" + (chromAndPos.size() == 0 ? 0l : Long.parseLong(chromAndPos.get(1))) + LINE_SEPARATOR);
 
-                    Map<String, List<String>> individualGenotypes = new LinkedHashMap<String, List<String>>();
+                    Map<String, List<String>> individualGenotypes = new TreeMap<String, List<String>>(new AlphaNumericComparator<String>());
                     Collection<VariantRunData> runs = variantsAndRuns.get(variant);
                     if (runs != null) {
                         for (VariantRunData run : runs) {
                             for (Integer sampleIndex : run.getSampleGenotypes().keySet()) {
                                 SampleGenotype sampleGenotype = run.getSampleGenotypes().get(sampleIndex);
                                 String individualId = individuals.get(sampleIDs.indexOf(new SampleId(run.getId().getProjectId(), sampleIndex))).getId();
-
-                                Integer gq = null;
-                                try {
-                                    gq = (Integer) sampleGenotype.getAdditionalInfo().get(VariantData.GT_FIELD_GQ);
-                                } catch (Exception ignored) {
-                                }
-                                if (gq != null && gq < nMinimumGenotypeQuality) {
-                                    continue;
-                                }
-
-                                Integer dp = null;
-                                try {
-                                    dp = (Integer) sampleGenotype.getAdditionalInfo().get(VariantData.GT_FIELD_DP);
-                                } catch (Exception ignored) {
-                                }
-                                if (dp != null && dp < nMinimumReadDepth) {
-                                    continue;
-                                }
-
-                                String gtCode = sampleGenotype.getCode();
                                 List<String> storedIndividualGenotypes = individualGenotypes.get(individualId);
                                 if (storedIndividualGenotypes == null) {
                                     storedIndividualGenotypes = new ArrayList<String>();
                                     individualGenotypes.put(individualId, storedIndividualGenotypes);
                                 }
-                                storedIndividualGenotypes.add(gtCode);
+                                
+    							if (!VariantData.gtPassesAnnotationFilters(individualId, sampleGenotype, individuals1, annotationFieldThresholds, individuals2, annotationFieldThresholds2))
+    								continue;	// skip genotype
+
+                                storedIndividualGenotypes.add(sampleGenotype.getCode());
                             }
                         }
                     }
 
-                    for (int j = 0; j < individualList.size(); j++ /* we use this list because it has the proper ordering*/) {
-                        String individualId = individualList.get(j);
-                        List<String> genotypes = individualGenotypes.get(individualId);
-                        HashMap<Object, Integer> genotypeCounts = new HashMap<Object, Integer>(); // will help us to keep track of missing genotypes
-                        int highestGenotypeCount = 0;
-                        String mostFrequentGenotype = null;
-                        if (genotypes != null) {
-                            for (String genotype : genotypes) {
-                                if (genotype.length() == 0) {
-                                    continue; /* skip missing genotypes */
-                                }
-
-                                int gtCount = 1 + Helper.getCountForKey(genotypeCounts, genotype);
-                                if (gtCount > highestGenotypeCount) {
-                                    highestGenotypeCount = gtCount;
-                                    mostFrequentGenotype = genotype;
-                                }
-                                genotypeCounts.put(genotype, gtCount);
-                            }
-                        }
-
-                        List<String> alleles = mostFrequentGenotype == null ? new ArrayList<String>() : variant.getAllelesFromGenotypeCode(mostFrequentGenotype);
-
-                        int nOutputCode = 0;
-                        if (mostFrequentGenotype == null) {
-                            nOutputCode = 9;
-                        } else {
-                            for (String all : Helper.split(mostFrequentGenotype, "/")) {
-                                if ("0".equals(all)) {
-                                    nOutputCode++;
-                                }
-                            }
-                        }
-                        if (j == 0 && variant.getKnownAlleleList().size() > 2) {
-                            warningFileWriter.write("- Variant " + variant.getId() + " is multi-allelic. Make sure Eigenstrat genotype encoding specifications are suitable for you.\n");
-                        }
-                        zos.write(("" + nOutputCode).getBytes());
-
-                        if (genotypeCounts.size() > 1 || alleles.size() > 2) {
-                            if (genotypeCounts.size() > 1) {
-                                warningFileWriter.write("- Dissimilar genotypes found for variant " + (variantId == null ? variant.getId() : variantId) + ", individual " + individualId + ". Exporting most frequent: " + nOutputCode + "\n");
-                            }
-                            if (alleles.size() > 2) {
-                                warningFileWriter.write("- More than 2 alleles found for variant " + (variantId == null ? variant.getId() : variantId) + ", individual " + individualId + ". Exporting only the first 2 alleles.\n");
-                            }
-                        }
+                    boolean fFirstLoopExecution = true;
+                    if (individualGenotypes.isEmpty())
+                    {
+                    	byte[] missingDataBytes = "9".getBytes();
+                    	for (int i=0; i<individuals.size(); i++)
+                    		zos.write(missingDataBytes);
+                    	warningFileWriter.write("- No genotypes found for variant " + (variantId == null ? variant.getId() : variantId) + "\n");
                     }
-                    zos.write((LINE_SEPARATOR).getBytes());
-                }
+                    else
+	                    for (String individualId : individualGenotypes.keySet() /* we use this object because it has the proper ordering*/) {
+	                        List<String> genotypes = individualGenotypes.get(individualId);
+	                        HashMap<Object, Integer> genotypeCounts = new HashMap<Object, Integer>(); // will help us to keep track of missing genotypes
+	                        int highestGenotypeCount = 0;
+	                        String mostFrequentGenotype = null;
+	                        if (genotypes != null) {
+	                            for (String genotype : genotypes) {
+	                                if (genotype.length() == 0) {
+	                                    continue; /* skip missing genotypes */
+	                                }
+	
+	                                int gtCount = 1 + Helper.getCountForKey(genotypeCounts, genotype);
+	                                if (gtCount > highestGenotypeCount) {
+	                                    highestGenotypeCount = gtCount;
+	                                    mostFrequentGenotype = genotype;
+	                                }
+	                                genotypeCounts.put(genotype, gtCount);
+	                            }
+	                        }
+	
+	                        List<String> alleles = mostFrequentGenotype == null ? new ArrayList<String>() : variant.getAllelesFromGenotypeCode(mostFrequentGenotype);
+	
+	                        int nOutputCode = 0;
+	                        if (mostFrequentGenotype == null)
+	                            nOutputCode = 9;
+	                        else
+	                            for (String all : Helper.split(mostFrequentGenotype, "/"))
+	                                if ("0".equals(all))
+	                                    nOutputCode++;
+	
+	                        if (fFirstLoopExecution && variant.getKnownAlleleList().size() > 2) {
+	                            warningFileWriter.write("- Variant " + variant.getId() + " is multi-allelic. Make sure Eigenstrat genotype encoding specifications are suitable for you.\n");
+	                        }
+	                        zos.write(("" + nOutputCode).getBytes());
+	
+	                        if (genotypeCounts.size() > 1 || alleles.size() > 2) {
+	                            if (genotypeCounts.size() > 1) {
+	                                warningFileWriter.write("- Dissimilar genotypes found for variant " + (variantId == null ? variant.getId() : variantId) + ", individual " + individualId + ". Exporting most frequent: " + nOutputCode + "\n");
+	                            }
+	                            if (alleles.size() > 2) {
+	                                warningFileWriter.write("- More than 2 alleles found for variant " + (variantId == null ? variant.getId() : variantId) + ", individual " + individualId + ". Exporting only the first 2 alleles.\n");
+	                            }
+	                        }
+	                        fFirstLoopExecution = false;
+	                    }
+	                    zos.write((LINE_SEPARATOR).getBytes());
+	                }
 
                 if (progress.hasAborted()) {
                     warningFileWriter.close();
@@ -346,6 +332,15 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
             
             if (unassignedMarkers.size() > 0)
             	LOG.info("No chromosomal position found for " + unassignedMarkers.size() + " markers " + StringUtils.join(unassignedMarkers, ", "));
+            
+            Collections.sort(individuals, new AlphaNumericComparator<Individual>());	// from now on it will have the proper ordering (until then we needed the ordering to remain consistent wtih that of SampleIDs)
+            StringBuffer indFileContents = new StringBuffer();
+            for (Individual individual : individuals)
+                indFileContents.append(individual.getId() + "\t" + getIndividualGenderCode(sModule, individual.getId()) + "\t" + (individual.getPopulation() == null ? "." : individual.getPopulation()) + LINE_SEPARATOR);
+
+            zos.putNextEntry(new ZipEntry(exportName + ".ind"));
+            zos.write(indFileContents.toString().getBytes());
+            zos.closeEntry();
             
             zos.putNextEntry(new ZipEntry(exportName + ".snp"));
             BufferedReader in = new BufferedReader(new FileReader(snpFile));
