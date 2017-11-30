@@ -96,12 +96,11 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 	 * @see fr.cirad.mgdb.exporting.markeroriented.AbstractMarkerOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.List, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, int, int, java.util.Map)
      */
     @Override
-    public void exportData(OutputStream outputStream, String sModule, List<SampleId> sampleIDs1, List<SampleId> sampleIDs2, ProgressIndicator progress, DBCursor markerCursor, Map<Comparable, Comparable> markerSynonyms, HashMap<String, Integer> annotationFieldThresholds, HashMap<String, Integer> annotationFieldThresholds2, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, List<SampleId> sampleIDs1, List<SampleId> sampleIDs2, ProgressIndicator progress, DBCursor markerCursor, Map<Comparable, Comparable> markerSynonyms, HashMap<String, Integer> annotationFieldThresholds, HashMap<String, Integer> annotationFieldThresholds2, Map<SampleId, String> sampleIndexToIndividualMapToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
 		List<String> individuals1 = getIndividualsFromSamples(sModule, sampleIDs1).stream().map(ind -> ind.getId()).collect(Collectors.toList());	
 		List<String> individuals2 = getIndividualsFromSamples(sModule, sampleIDs2).stream().map(ind -> ind.getId()).collect(Collectors.toList());
 
-		ArrayList<SampleId> sampleIDs = (ArrayList<SampleId>) CollectionUtils.union(sampleIDs1, sampleIDs2);
-		List<Individual> individuals = getIndividualsFromSamples(sModule, sampleIDs);
+		List<String> sortedIndividuals = sampleIndexToIndividualMapToExport.values().stream().distinct().sorted(new AlphaNumericComparator<String>()).collect(Collectors.toList());
 	
         MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         ZipOutputStream zos = new ZipOutputStream(outputStream);
@@ -125,7 +124,7 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 
         int markerCount = markerCursor.count();
 
-        String exportName = sModule + "_" + markerCount + "variants_" + individuals.size() + "individuals";
+        String exportName = sModule + "_" + markerCount + "variants_" + sortedIndividuals.size() + "individuals";
         zos.putNextEntry(new ZipEntry(exportName + ".gff3"));
         String header = "##gff-version 3" + LINE_SEPARATOR;
         zos.write(header.getBytes());
@@ -157,7 +156,7 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
             }
 
             List<Comparable> currentMarkers = new ArrayList<>(markerChromosomalPositions.keySet());
-            LinkedHashMap<VariantData, Collection<VariantRunData>> variantsAndRuns = MgdbDao.getSampleGenotypes(mongoTemplate, sampleIDs, currentMarkers, true, null /*new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_SEQUENCE).and(new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_START_SITE))*/);	// query mongo db for matching genotypes		
+            LinkedHashMap<VariantData, Collection<VariantRunData>> variantsAndRuns = MgdbDao.getSampleGenotypes(mongoTemplate, sampleIndexToIndividualMapToExport.keySet(), currentMarkers, true, null /*new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_SEQUENCE).and(new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_START_SITE))*/);	// query mongo db for matching genotypes		
             for (VariantData variant : variantsAndRuns.keySet()) // read data and write results into temporary files (one per sample)
             {
                 Comparable variantId = variant.getId();
@@ -178,16 +177,16 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
                     for (VariantRunData run : runs) {
                         for (Integer sampleIndex : run.getSampleGenotypes().keySet()) {
                             SampleGenotype sampleGenotype = run.getSampleGenotypes().get(sampleIndex);
-                            String individualName = individuals.get(sampleIDs.indexOf(new SampleId(run.getId().getProjectId(), sampleIndex))).getId();
+                            String individualId = sampleIndexToIndividualMapToExport.get(new SampleId(run.getId().getProjectId(), sampleIndex));
 
-							if (!VariantData.gtPassesVcfAnnotationFilters(individualName, sampleGenotype, individuals1, annotationFieldThresholds, individuals2, annotationFieldThresholds2))
+							if (!VariantData.gtPassesVcfAnnotationFilters(individualId, sampleGenotype, individuals1, annotationFieldThresholds, individuals2, annotationFieldThresholds2))
 								continue;	// skip genotype
 
                             String gtCode = sampleGenotype.getCode();
-                            List<String> storedIndividualGenotypes = individualGenotypes.get(individualName);
+                            List<String> storedIndividualGenotypes = individualGenotypes.get(individualId);
                             if (storedIndividualGenotypes == null) {
                                 storedIndividualGenotypes = new ArrayList<>();
-                                individualGenotypes.put(individualName, storedIndividualGenotypes);
+                                individualGenotypes.put(individualId, storedIndividualGenotypes);
                             }
                             storedIndividualGenotypes.add(gtCode);
                         }

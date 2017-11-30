@@ -153,7 +153,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 	 * @see fr.cirad.mgdb.exporting.markeroriented.AbstractMarkerOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.List, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, int, int, java.util.Map)
      */
     @Override
-    public void exportData(OutputStream outputStream, String sModule, List<SampleId> sampleIDs1, List<SampleId> sampleIDs2, ProgressIndicator progress, DBCursor markerCursor, Map<Comparable, Comparable> markerSynonyms, HashMap<String, Integer> annotationFieldThresholds, HashMap<String, Integer> annotationFieldThresholds2, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, List<SampleId> sampleIDs1, List<SampleId> sampleIDs2, ProgressIndicator progress, DBCursor markerCursor, Map<Comparable, Comparable> markerSynonyms, HashMap<String, Integer> annotationFieldThresholds, HashMap<String, Integer> annotationFieldThresholds2, Map<SampleId, String> sampleIndexToIndividualMapToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
         // long before = System.currentTimeMillis();
 
         File warningFile = File.createTempFile("export_warnings_", "");
@@ -190,10 +190,9 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
     		List<String> individuals1 = getIndividualsFromSamples(sModule, sampleIDs1).stream().map(ind -> ind.getId()).collect(Collectors.toList());	
     		List<String> individuals2 = getIndividualsFromSamples(sModule, sampleIDs2).stream().map(ind -> ind.getId()).collect(Collectors.toList());
 
-    		ArrayList<SampleId> sampleIDs = (ArrayList<SampleId>) CollectionUtils.union(sampleIDs1, sampleIDs2);
-    		List<Individual> individuals = getIndividualsFromSamples(sModule, sampleIDs);
+    		List<String> sortedIndividuals = sampleIndexToIndividualMapToExport.values().stream().distinct().sorted(new AlphaNumericComparator<String>()).collect(Collectors.toList());
 
-            String exportName = sModule + "_" + markerCount + "variants_" + individuals.size() + "individuals";
+            String exportName = sModule + "_" + markerCount + "variants_" + sortedIndividuals.size() + "individuals";
             
             zos.putNextEntry(new ZipEntry(exportName + ".eigenstratgeno"));
 
@@ -217,7 +216,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
                 }
 
                 List<Comparable> currentMarkers = new ArrayList<Comparable>(markerChromosomalPositions.keySet());
-                LinkedHashMap<VariantData, Collection<VariantRunData>> variantsAndRuns = MgdbDao.getSampleGenotypes(mongoTemplate, sampleIDs, currentMarkers, true, null /*new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_SEQUENCE).and(new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_START_SITE))*/);	// query mongo db for matching genotypes			
+                LinkedHashMap<VariantData, Collection<VariantRunData>> variantsAndRuns = MgdbDao.getSampleGenotypes(mongoTemplate, sampleIndexToIndividualMapToExport.keySet(), currentMarkers, true, null /*new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_SEQUENCE).and(new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_START_SITE))*/);	// query mongo db for matching genotypes			
                 for (VariantData variant : variantsAndRuns.keySet()) // read data and write results into temporary files (one per sample)
                 {
                     Comparable variantId = variant.getId();
@@ -240,7 +239,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
                         for (VariantRunData run : runs) {
                             for (Integer sampleIndex : run.getSampleGenotypes().keySet()) {
                                 SampleGenotype sampleGenotype = run.getSampleGenotypes().get(sampleIndex);
-                                String individualId = individuals.get(sampleIDs.indexOf(new SampleId(run.getId().getProjectId(), sampleIndex))).getId();
+                                String individualId = sampleIndexToIndividualMapToExport.get(new SampleId(run.getId().getProjectId(), sampleIndex));
                                 List<String> storedIndividualGenotypes = individualGenotypes.get(individualId);
                                 if (storedIndividualGenotypes == null) {
                                     storedIndividualGenotypes = new ArrayList<String>();
@@ -259,12 +258,12 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
                     if (individualGenotypes.isEmpty())
                     {
                     	byte[] missingDataBytes = "9".getBytes();
-                    	for (int i=0; i<individuals.size(); i++)
+                    	for (int i=0; i<sortedIndividuals.size(); i++)
                     		zos.write(missingDataBytes);
                     	warningFileWriter.write("- No genotypes found for variant " + (variantId == null ? variant.getId() : variantId) + "\n");
                     }
                     else
-	                    for (String individualId : individualGenotypes.keySet() /* we use this object because it has the proper ordering*/) {
+	                    for (String individualId : sortedIndividuals /* we use this object because it has the proper ordering*/) {
 	                        List<String> genotypes = individualGenotypes.get(individualId);
 	                        HashMap<Object, Integer> genotypeCounts = new HashMap<Object, Integer>(); // will help us to keep track of missing genotypes
 	                        int highestGenotypeCount = 0;
@@ -333,10 +332,13 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
             if (unassignedMarkers.size() > 0)
             	LOG.info("No chromosomal position found for " + unassignedMarkers.size() + " markers " + StringUtils.join(unassignedMarkers, ", "));
             
-            Collections.sort(individuals, new AlphaNumericComparator<Individual>());	// from now on it will have the proper ordering (until then we needed the ordering to remain consistent wtih that of SampleIDs)
+//            Collections.sort(individuals, new AlphaNumericComparator<Individual>());	// from now on it will have the proper ordering (until then we needed the ordering to remain consistent wtih that of SampleIDs)
             StringBuffer indFileContents = new StringBuffer();
-            for (Individual individual : individuals)
-                indFileContents.append(individual.getId() + "\t" + getIndividualGenderCode(sModule, individual.getId()) + "\t" + (individual.getPopulation() == null ? "." : individual.getPopulation()) + LINE_SEPARATOR);
+            for (String individual : sortedIndividuals)
+            {
+            	String pop = MgdbDao.getIndividualPopulation(sModule, individual);
+                indFileContents.append(individual + "\t" + getIndividualGenderCode(sModule, individual) + "\t" + (pop == null ? "." : pop) + LINE_SEPARATOR);
+            }
 
             zos.putNextEntry(new ZipEntry(exportName + ".ind"));
             zos.write(indFileContents.toString().getBytes());

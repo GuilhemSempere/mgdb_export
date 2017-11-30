@@ -22,6 +22,7 @@ import fr.cirad.mgdb.model.mongo.maintypes.Individual;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
 import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
+import fr.cirad.mgdb.model.mongodao.MgdbDao;
 import fr.cirad.tools.Helper;
 import fr.cirad.tools.ProgressIndicator;
 import fr.cirad.tools.mongo.MongoTemplateManager;
@@ -141,7 +142,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	                String individualId, line = in.readLine();	// read sample id
 	                if (line != null) {
 	                    individualId = line;
-	                    String population = getIndividualPopulation(sModule, line);
+	                    String population = MgdbDao.getIndividualPopulation(sModule, line);
 	                    String individualInfo = (population == null ? "." : population) + " " + individualId;
 	                    zos.write((individualInfo + " 0 0 0 " + getIndividualGenderCode(sModule, individualId)).getBytes());
 	                } else {
@@ -286,18 +287,6 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
     @Override
     public List<String> getStepList() {
         return Arrays.asList(new String[]{"Exporting data to PLINK format"});
-    }
-
-    /**
-     * Gets the individual population.
-     *
-     * @param sModule the module
-     * @param individual the individual
-     * @return the individual population
-     */
-    protected String getIndividualPopulation(final String sModule, final String individual) {
-        MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
-        return mongoTemplate.findById(individual, Individual.class).getPopulation();
     }
 
     /**

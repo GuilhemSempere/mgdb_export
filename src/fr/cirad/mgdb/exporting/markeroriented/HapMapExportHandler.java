@@ -46,6 +46,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -112,15 +113,13 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
  * @see fr.cirad.mgdb.exporting.markeroriented.AbstractMarkerOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.List, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, int, int, java.util.Map)
      */
     @Override
-    public void exportData(OutputStream outputStream, String sModule, List<SampleId> sampleIDs1, List<SampleId> sampleIDs2, ProgressIndicator progress, DBCursor markerCursor, Map<Comparable, Comparable> markerSynonyms, HashMap<String, Integer> annotationFieldThresholds, HashMap<String, Integer> annotationFieldThresholds2, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, List<SampleId> sampleIDs1, List<SampleId> sampleIDs2, ProgressIndicator progress, DBCursor markerCursor, Map<Comparable, Comparable> markerSynonyms, HashMap<String, Integer> annotationFieldThresholds, HashMap<String, Integer> annotationFieldThresholds2, Map<SampleId, String> sampleIndexToIndividualMapToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
         
 		List<String> individuals1 = getIndividualsFromSamples(sModule, sampleIDs1).stream().map(ind -> ind.getId()).collect(Collectors.toList());	
 		List<String> individuals2 = getIndividualsFromSamples(sModule, sampleIDs2).stream().map(ind -> ind.getId()).collect(Collectors.toList());
 
-		ArrayList<SampleId> sampleIDs = (ArrayList<SampleId>) CollectionUtils.union(sampleIDs1, sampleIDs2);
-		List<Individual> individuals = getIndividualsFromSamples(sModule, sampleIDs), sortedIndividuals = new ArrayList<Individual>(individuals);
-		Collections.sort(sortedIndividuals, new AlphaNumericComparator<Individual>());
-
+		List<String> sortedIndividuals = sampleIndexToIndividualMapToExport.values().stream().distinct().sorted(new AlphaNumericComparator<String>()).collect(Collectors.toList());
+		
 		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         File warningFile = File.createTempFile("export_warnings_", "");
         FileWriter warningFileWriter = new FileWriter(warningFile);
@@ -143,13 +142,12 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
             }
         }
 
-        String exportName = sModule + "_" + markerCount + "variants_" + individuals.size() + "individuals";
+        String exportName = sModule + "_" + markerCount + "variants_" + sortedIndividuals.size() + "individuals";
         zos.putNextEntry(new ZipEntry(exportName + ".hapmap"));
         String header = "rs#" + "\t" + "alleles" + "\t" + "chrom" + "\t" + "pos" + "\t" + "strand" + "\t" + "assembly#" + "\t" + "center" + "\t" + "protLSID" + "\t" + "assayLSID" + "\t" + "panelLSID" + "\t" + "QCcode";
         zos.write(header.getBytes());
-        for (int i = 0; i < sortedIndividuals.size(); i++) {
-            zos.write(("\t" + sortedIndividuals.get(i).getId()).getBytes());
-        }
+        for (String individual : sortedIndividuals)
+            zos.write(("\t" + individual).getBytes());
         zos.write((LINE_SEPARATOR).getBytes());
 
         int avgObjSize = (Integer) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
@@ -171,7 +169,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
             }
 
             List<Comparable> currentMarkers = new ArrayList<Comparable>(markerChromosomalPositions.keySet());
-            LinkedHashMap<VariantData, Collection<VariantRunData>> variantsAndRuns = MgdbDao.getSampleGenotypes(mongoTemplate, sampleIDs, currentMarkers, true, null /*new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_SEQUENCE).and(new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_START_SITE))*/);	// query mongo db for matching genotypes			
+            LinkedHashMap<VariantData, Collection<VariantRunData>> variantsAndRuns = MgdbDao.getSampleGenotypes(mongoTemplate, sampleIndexToIndividualMapToExport.keySet(), currentMarkers, true, null /*new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_SEQUENCE).and(new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ChromosomalPosition.FIELDNAME_START_SITE))*/);	// query mongo db for matching genotypes			
             for (VariantData variant : variantsAndRuns.keySet()) // read data and write results into temporary files (one per sample)
             {
                 Comparable variantId = variant.getId();
@@ -198,7 +196,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
                     for (VariantRunData run : runs) {
                         for (Integer sampleIndex : run.getSampleGenotypes().keySet()) {
                             SampleGenotype sampleGenotype = run.getSampleGenotypes().get(sampleIndex);
-                            String individualId = individuals.get(sampleIDs.indexOf(new SampleId(run.getId().getProjectId(), sampleIndex))).getId();
+                            String individualId = sampleIndexToIndividualMapToExport.get(new SampleId(run.getId().getProjectId(), sampleIndex));
                             
 							if (!VariantData.gtPassesVcfAnnotationFilters(individualId, sampleGenotype, individuals1, annotationFieldThresholds, individuals2, annotationFieldThresholds2))
 								continue;	// skip genotype
@@ -215,14 +213,14 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
                 }
 
                 int writtenGenotypeCount = 0;
-                for (Individual individual : sortedIndividuals /* we use this list because it has the proper ordering */) {
-                    int individualIndex = individuals.indexOf(individual.getId());
-                    while (writtenGenotypeCount < individualIndex - 1) {
+                for (String individual : individualGenotypes.keySet() /* we use this list because it has the proper ordering */) {
+                    int individualIndex = sortedIndividuals.indexOf(individual);
+                    while (writtenGenotypeCount < individualIndex) {
                         zos.write(missingGenotype);
                         writtenGenotypeCount++;
                     }
 
-                    List<String> genotypes = individualGenotypes.get(individual.getId());
+                    List<String> genotypes = individualGenotypes.get(individual);
                     HashMap<Object, Integer> genotypeCounts = new HashMap<Object, Integer>();	// will help us to keep track of missing genotypes
                     int highestGenotypeCount = 0;
                     String mostFrequentGenotype = null;
@@ -246,11 +244,11 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
                     writtenGenotypeCount++;
 
                     if (genotypeCounts.size() > 1) {
-                        warningFileWriter.write("- Dissimilar genotypes found for variant " + (variantId == null ? variant.getId() : variantId) + ", individual " + individual.getId() + ". Exporting most frequent: " + new String(exportedGT) + "\n");
+                        warningFileWriter.write("- Dissimilar genotypes found for variant " + (variantId == null ? variant.getId() : variantId) + ", individual " + individual + ". Exporting most frequent: " + new String(exportedGT) + "\n");
                     }
                 }
 
-                while (writtenGenotypeCount < individuals.size()) {
+                while (writtenGenotypeCount < sortedIndividuals.size()) {
                     zos.write(missingGenotype);
                     writtenGenotypeCount++;
                 }
