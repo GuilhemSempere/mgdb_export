@@ -158,15 +158,11 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		List<String> individuals1 = getIndividualsFromSamples(sModule, sampleIDs1).stream().map(ind -> ind.getId()).collect(Collectors.toList());	
 		List<String> individuals2 = getIndividualsFromSamples(sModule, sampleIDs2).stream().map(ind -> ind.getId()).collect(Collectors.toList());
 
-		ArrayList<SampleId> sampleIDs = (ArrayList<SampleId>) CollectionUtils.union(sampleIDs1, sampleIDs2);
-		List<Individual> individuals = getIndividualsFromSamples(sModule, sampleIDs);
-		LinkedHashMap<SampleId, String> sampleIDToIndividualIdMap = new LinkedHashMap<SampleId, String>();
-		for (int i=0; i<sampleIDs.size(); i++)
-			sampleIDToIndividualIdMap.put(sampleIDs.get(i), individuals.get(i).getId());
-		Collections.sort(individuals, new AlphaNumericComparator<Individual>());	// from now on it will have the proper ordering (until then we needed the ordering to remain consistent wtih that of SampleIDs)
+//		ArrayList<SampleId> sampleIDs = (ArrayList<SampleId>) CollectionUtils.union(sampleIDs1, sampleIDs2);
+		List<String> sortedIndividuals = sampleIndexToIndividualMapToExport.values().stream().distinct().sorted(new AlphaNumericComparator<String>()).collect(Collectors.toList());
 		
 		Integer projectId = null;
-		for (SampleId spId : sampleIDs)
+		for (SampleId spId : sampleIndexToIndividualMapToExport.keySet())
 		{
 			if (projectId == null)
 				projectId = spId.getProject();
@@ -198,7 +194,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				zos.closeEntry();
 			}
 
-		String exportName = sModule + "_" + markerCount + "variants_" + individuals.size() + "individuals";
+		String exportName = sModule + "_" + markerCount + "variants_" + sortedIndividuals.size() + "individuals";
 
 		int avgObjSize = (Integer) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
 		int nQueryChunkSize = nMaxChunkSizeInMb*1024*1024 / avgObjSize;
@@ -277,7 +273,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 			}
 			headerCursor.close();
 
-			VCFHeader header = new VCFHeader(headerLines, individuals.stream().map(ind -> ind.getId()).collect(Collectors.toList()));
+			VCFHeader header = new VCFHeader(headerLines, sortedIndividuals);
 			header.setWriteCommandLine(fWriteCommandLine);
 			header.setWriteEngineHeaders(fWriteEngineHeaders);
 			writer.writeHeader(header);
@@ -303,10 +299,10 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 					fStartingNewChunk = false;
 				}
 
-				LinkedHashMap<VariantData, Collection<VariantRunData>> variantsAndRuns = MgdbDao.getSampleGenotypes(mongoTemplate, sampleIDs, currentMarkers, true, null /*new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ReferencePosition.FIELDNAME_SEQUENCE).and(new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ReferencePosition.FIELDNAME_START_SITE))*/);	// query mongo db for matching genotypes
+				LinkedHashMap<VariantData, Collection<VariantRunData>> variantsAndRuns = MgdbDao.getSampleGenotypes(mongoTemplate, sampleIndexToIndividualMapToExport.keySet(), currentMarkers, true, null /*new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ReferencePosition.FIELDNAME_SEQUENCE).and(new Sort(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ReferencePosition.FIELDNAME_START_SITE))*/);	// query mongo db for matching genotypes
 				for (VariantData variant : variantsAndRuns.keySet())
 				{
-					VariantContext vc = variant.toVariantContext(variantsAndRuns.get(variant), !ObjectId.isValid(variant.getId().toString()), sampleIDToIndividualIdMap, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? variant.getId() : markerSynonyms.get(variant.getId()));
+					VariantContext vc = variant.toVariantContext(variantsAndRuns.get(variant), !ObjectId.isValid(variant.getId().toString()), sampleIndexToIndividualMapToExport, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? variant.getId() : markerSynonyms.get(variant.getId()));
 					try
 					{
 						writer.add(vc);
