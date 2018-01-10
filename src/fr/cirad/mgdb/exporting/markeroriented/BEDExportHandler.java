@@ -86,7 +86,6 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 	 */
 	@Override
 	public void exportData(OutputStream outputStream, String sModule, List<SampleId> sampleIDs1, List<SampleId> sampleIDs2, ProgressIndicator progress, DBCursor markerCursor, Map<Comparable, Comparable> markerSynonyms, HashMap<String, Integer> annotationFieldThresholds, HashMap<String, Integer> annotationFieldThresholds2, Map<SampleId, String> sampleIndexToIndividualMapToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
-		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
 		ZipOutputStream zos = new ZipOutputStream(outputStream);
 		
 		if (readyToExportFiles != null)
@@ -104,11 +103,8 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 			}
 				
 		int markerCount = markerCursor.count();
-		
-		ArrayList<SampleId> sampleIDs = (ArrayList<SampleId>) CollectionUtils.union(sampleIDs1, sampleIDs2);
-		List<Individual> individuals = getIndividualsFromSamples(sModule, sampleIDs);
 
-		String exportName = sModule + "_" + markerCount + "variants_" + individuals.size() + "individuals";
+		String exportName = sModule + "_" + markerCount + "variants";
 		zos.putNextEntry(new ZipEntry(exportName + ".bed"));
 		
 		short nProgress = 0, nPreviousProgress = 0;	
