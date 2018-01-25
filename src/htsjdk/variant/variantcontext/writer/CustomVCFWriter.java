@@ -671,4 +671,9 @@ public class CustomVCFWriter extends IndexingVariantContextWriter {
     static {
         VERSION_LINE = (new StringBuilder()).append("##").append(VCFHeaderVersion.VCF4_1.getFormatString()).append("=").append(VCFHeaderVersion.VCF4_1.getVersionString()).toString();
     }
+
+	@Override
+	public void setHeader(VCFHeader header) {
+		this.mHeader = header;
+	}
 }
