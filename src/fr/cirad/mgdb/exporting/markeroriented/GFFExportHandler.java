@@ -119,7 +119,7 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 
         int markerCount = markerCursor.count();
 
-        String exportName = sModule + "_" + markerCount + "variants_" + sortedIndividuals.size() + "individuals";
+        String exportName = sModule + "__" + markerCount + "variants__" + sortedIndividuals.size() + "individuals";
         zos.putNextEntry(new ZipEntry(exportName + ".gff3"));
         String header = "##gff-version 3" + LINE_SEPARATOR;
         zos.write(header.getBytes());

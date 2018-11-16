@@ -135,7 +135,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
             }
         }
 
-        String exportName = sModule + "_" + markerCount + "variants_" + sortedIndividuals.size() + "individuals";
+        String exportName = sModule + "__" + markerCount + "variants__" + sortedIndividuals.size() + "individuals";
         zos.putNextEntry(new ZipEntry(exportName + ".hapmap"));
         String header = "rs#" + "\t" + "alleles" + "\t" + "chrom" + "\t" + "pos" + "\t" + "strand" + "\t" + "assembly#" + "\t" + "center" + "\t" + "protLSID" + "\t" + "assayLSID" + "\t" + "panelLSID" + "\t" + "QCcode";
         zos.write(header.getBytes());

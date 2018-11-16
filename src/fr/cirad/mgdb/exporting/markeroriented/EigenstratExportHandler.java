@@ -174,7 +174,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 
     		List<String> sortedIndividuals = samplesToExport.stream().map(gs -> gs.getIndividual()).distinct().sorted(new AlphaNumericComparator<String>()).collect(Collectors.toList());
  
-            String exportName = sModule + "_" + markerCount + "variants_" + sortedIndividuals.size() + "individuals";
+            String exportName = sModule + "__" + markerCount + "variants__" + sortedIndividuals.size() + "individuals";
             
             zos.putNextEntry(new ZipEntry(exportName + ".eigenstratgeno"));
 

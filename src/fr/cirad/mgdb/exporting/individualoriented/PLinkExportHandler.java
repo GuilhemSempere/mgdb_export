@@ -124,7 +124,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
         MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         int markerCount = markerCursor.count();
 
-        String exportName = sModule + "_" + markerCount + "variants_" + individualExportFiles.size() + "individuals";
+        String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.size() + "individuals";
         zos.putNextEntry(new ZipEntry(exportName + ".ped"));
 
         TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = new TreeMap<Integer, Comparable>();

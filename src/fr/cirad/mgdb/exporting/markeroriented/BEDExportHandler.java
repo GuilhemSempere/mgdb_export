@@ -98,7 +98,7 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 				
 		int markerCount = markerCursor.count();
 
-		String exportName = sModule + "_" + markerCount + "variants";
+		String exportName = sModule + "__" + markerCount + "variants";
 		zos.putNextEntry(new ZipEntry(exportName + ".bed"));
 		
 		short nProgress = 0, nPreviousProgress = 0;	

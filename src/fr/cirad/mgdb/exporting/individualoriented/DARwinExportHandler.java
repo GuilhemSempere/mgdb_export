@@ -121,7 +121,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
             }
         }
 
-        String exportName = sModule + "_" + markerCount + "variants_" + individualExportFiles.size() + "individuals";
+        String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.size() + "individuals";
 
         StringBuffer donFileContents = new StringBuffer();
 

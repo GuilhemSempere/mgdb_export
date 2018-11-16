@@ -104,7 +104,7 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
         int avgObjSize = (Integer) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
         int nChunkSize = nMaxChunkSizeInMb * 1024 * 1024 / avgObjSize;
         
-        String exportName = sModule + "_" + markerCount + "variants_" + individualExportFiles.size() + "individuals";
+        String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.size() + "individuals";
         zos.putNextEntry(new ZipEntry(exportName + ".genotype"));
         zos.write(("# fjFile = GENOTYPE" + LINE_SEPARATOR).getBytes());
         
