@@ -219,8 +219,8 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 
         zos.putNextEntry(new ZipEntry(exportName + ".map"));
 
-        int avgObjSize = (Integer) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
-        int nChunkSize = nMaxChunkSizeInMb * 1024 * 1024 / avgObjSize;
+    	Number avgObjSize = (Number) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
+        int nChunkSize = (int) (nMaxChunkSizeInMb * 1024 * 1024 / avgObjSize.doubleValue());
 
         markerCursor.batchSize(nChunkSize);
         int nMarkerIndex = 0;

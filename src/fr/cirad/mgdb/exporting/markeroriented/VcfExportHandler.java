@@ -36,8 +36,10 @@ import htsjdk.variant.variantcontext.VariantContext;
 import htsjdk.variant.variantcontext.writer.CustomVCFWriter;
 import htsjdk.variant.variantcontext.writer.VariantContextWriter;
 import htsjdk.variant.vcf.VCFContigHeaderLine;
+import htsjdk.variant.vcf.VCFFormatHeaderLine;
 import htsjdk.variant.vcf.VCFHeader;
 import htsjdk.variant.vcf.VCFHeaderLine;
+import htsjdk.variant.vcf.VCFHeaderLineType;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -188,8 +190,8 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 
 		String exportName = sModule + "__" + markerCount + "variants__" + sortedIndividuals.size() + "individuals";
 
-		int avgObjSize = (Integer) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
-		int nQueryChunkSize = Math.max(1, (nMaxChunkSizeInMb*1024*1024 / avgObjSize) / AsyncExportTool.INITIAL_NUMBER_OF_SIMULTANEOUS_QUERY_THREADS);
+    	Number avgObjSize = (Number) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
+		int nQueryChunkSize = (int) Math.max(1, (nMaxChunkSizeInMb*1024*1024 / avgObjSize.doubleValue()) / AsyncExportTool.INITIAL_NUMBER_OF_SIMULTANEOUS_QUERY_THREADS);
 
 		VariantContextWriter writer = null;
 		try
@@ -215,6 +217,9 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				}
 				markerCursorCopy.close();
 			}
+			else
+				for (Object chr : markerCursor.getCollection().distinct(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ReferencePosition.FIELDNAME_SEQUENCE, markerCursor.getQuery()))	// find out distinctSequenceNames by looking at exported variant list
+					distinctSequenceNames.add((String) chr);
 
 			Collections.sort(distinctSequenceNames, new AlphaNumericComparator());
 			SAMSequenceDictionary dict = createSAMSequenceDictionary(sModule, distinctSequenceNames);
@@ -238,32 +243,38 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				DBVCFHeader dbVcfHeader = DBVCFHeader.fromDBObject(headerCursor.next());
 				headerLines.addAll(dbVcfHeader.getHeaderLines());
 
-				// Add sequence header lines (not stored in our vcf header collection)
-				BasicDBObject projection = new BasicDBObject(SequenceStats.FIELDNAME_SEQUENCE_LENGTH, true);
-				int nSequenceIndex = 0;
-				for (String sequenceName : distinctSequenceNames)
-				{
-					String sequenceInfoCollName = MongoTemplateManager.getMongoCollectionName(SequenceStats.class);
-					boolean fCollectionExists = mongoTemplate.collectionExists(sequenceInfoCollName);
-					if (fCollectionExists) {
-						DBObject record = mongoTemplate.getCollection(sequenceInfoCollName).findOne(new Query(Criteria.where("_id").is(sequenceName)).getQueryObject(), projection);
-						if (record == null)
-						{
-							LOG.warn("Sequence '" + sequenceName + "' not found in collection " + sequenceInfoCollName);
-							continue;
-						}
-
-						Map<String, String> sequenceLineData = new LinkedHashMap<String, String>();
-						sequenceLineData.put("ID", (String) record.get("_id"));
-						sequenceLineData.put("length", ((Number) record.get(SequenceStats.FIELDNAME_SEQUENCE_LENGTH)).toString());
-						headerLines.add(new VCFContigHeaderLine(sequenceLineData, nSequenceIndex++));
-					}
-				}
 				fWriteCommandLine = headerCursor.size() == 1 && dbVcfHeader.getWriteCommandLine();	// wouldn't make sense to include command lines for several runs
 				if (!dbVcfHeader.getWriteEngineHeaders())
 					fWriteEngineHeaders = false;
 			}
 			headerCursor.close();
+
+			if (headerLines.size() == 0)
+				headerLines.add(new VCFFormatHeaderLine("GT", 1, VCFHeaderLineType.String, "Genotype"));	// minimum required
+			
+			// Add sequence header lines (not stored in our vcf header collection)
+			BasicDBObject projection = new BasicDBObject(SequenceStats.FIELDNAME_SEQUENCE_LENGTH, true);
+			int nSequenceIndex = 0;
+			String sequenceInfoCollName = MongoTemplateManager.getMongoCollectionName(SequenceStats.class);
+			boolean fCollectionExists = mongoTemplate.collectionExists(sequenceInfoCollName);
+			for (String sequenceName : distinctSequenceNames)
+			{
+				Map<String, String> sequenceLineData = new LinkedHashMap<String, String>();
+				if (fCollectionExists) {
+					DBObject record = mongoTemplate.getCollection(sequenceInfoCollName).findOne(new Query(Criteria.where("_id").is(sequenceName)).getQueryObject(), projection);
+					if (record == null)
+					{
+						LOG.warn("Sequence '" + sequenceName + "' not found in collection " + sequenceInfoCollName);
+						continue;
+					}
+
+					sequenceLineData.put("ID", (String) record.get("_id"));
+					sequenceLineData.put("length", ((Number) record.get(SequenceStats.FIELDNAME_SEQUENCE_LENGTH)).toString());
+				}
+				else
+					sequenceLineData.put("ID", sequenceName);
+				headerLines.add(new VCFContigHeaderLine(sequenceLineData, nSequenceIndex++));
+			}
 
 			VCFHeader header = new VCFHeader(headerLines, sortedIndividuals);
 			header.setWriteCommandLine(fWriteCommandLine);

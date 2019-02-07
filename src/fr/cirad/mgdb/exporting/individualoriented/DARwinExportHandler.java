@@ -137,8 +137,8 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
         DBCursor markerCursorCopy = markerCursor.copy();	// dunno how expensive this is, but seems safer than keeping all IDs in memory at any time
 
         short nProgress = 0, nPreviousProgress = 0;
-        int avgObjSize = (Integer) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
-        int nChunkSize = nMaxChunkSizeInMb * 1024 * 1024 / avgObjSize;
+    	Number avgObjSize = (Number) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
+    	int nChunkSize = (int) (nMaxChunkSizeInMb * 1024 * 1024 / avgObjSize.doubleValue());
         markerCursorCopy.batchSize(nChunkSize);
 
         int nMarkerIndex = 0;

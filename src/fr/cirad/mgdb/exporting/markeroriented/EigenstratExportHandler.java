@@ -297,8 +297,8 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
     			}
     		};
     		
-            int avgObjSize = (Integer) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
-    		int nQueryChunkSize = Math.max(1, (nMaxChunkSizeInMb*1024*1024 / avgObjSize) / AsyncExportTool.INITIAL_NUMBER_OF_SIMULTANEOUS_QUERY_THREADS);
+        	Number avgObjSize = (Number) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
+    		int nQueryChunkSize = (int) Math.max(1, (nMaxChunkSizeInMb*1024*1024 / avgObjSize.doubleValue()) / AsyncExportTool.INITIAL_NUMBER_OF_SIMULTANEOUS_QUERY_THREADS);
     		AsyncExportTool syncExportTool = new AsyncExportTool(markerCursor, markerCount, nQueryChunkSize, mongoTemplate, samplesToExport, dataOutputHandler, progress);
     		syncExportTool.launch();
 
