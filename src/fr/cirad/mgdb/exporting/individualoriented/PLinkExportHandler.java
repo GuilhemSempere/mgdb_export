@@ -81,7 +81,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
      */
     @Override
     public String getExportFormatDescription() {
-        return "Exports zipped PED and MAP files. See <a target='_blank' href='http://pngu.mgh.harvard.edu/~purcell/plink/data.shtml'>http://pngu.mgh.harvard.edu/~purcell/plink/data.shtml</a> for more details";
+    	return "Exports zipped PED and MAP files. See <a target='_blank' href='http://www.gwaspi.org/?page_id=145'>http://www.gwaspi.org/?page_id=145</a> for more details";
     }
 
     /* (non-Javadoc)
