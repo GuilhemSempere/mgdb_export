@@ -85,7 +85,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
      */
     @Override
     public String getExportFormatDescription() {
-        return "Exports zipped PED and MAP files. See <a target='_blank' href='http://pngu.mgh.harvard.edu/~purcell/plink/data.shtml'>http://pngu.mgh.harvard.edu/~purcell/plink/data.shtml</a> for more details";
+        return "Exports zipped PED and MAP files. See <a target='_blank' href='http://www.gwaspi.org/?page_id=145'>http://www.gwaspi.org/?page_id=145</a> for more details";
     }
 
     /* (non-Javadoc)
@@ -128,7 +128,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
         MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         int markerCount = markerCursor.count();
 
-        String exportName = sModule + "_" + markerCount + "variants_" + individualExportFiles.size() + "individuals";
+        String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.size() + "individuals";
         zos.putNextEntry(new ZipEntry(exportName + ".ped"));
 
         TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = new TreeMap<Integer, Comparable>();
@@ -137,6 +137,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
         try
         {
 	        for (File f : individualExportFiles) {
+	        	StringBuffer sb = new StringBuffer();
 	            BufferedReader in = new BufferedReader(new FileReader(f));
 	            try {
 	                String individualId, line = in.readLine();	// read sample id
@@ -144,7 +145,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	                    individualId = line;
 	                    String population = MgdbDao.getIndividualPopulation(sModule, line);
 	                    String individualInfo = (population == null ? "." : population) + " " + individualId;
-	                    zos.write((individualInfo + " 0 0 0 " + getIndividualGenderCode(sModule, individualId)).getBytes());
+	                    sb.append(individualInfo + " 0 0 0 " + getIndividualGenderCode(sModule, individualId));
 	                } else {
 	                    throw new Exception("Unable to read first line of temp export file " + f.getName());
 	                }
@@ -185,7 +186,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	                        warningFileWriter.write("- SNP expected, but alleles are not coded on a single char for variant " + nMarkerIndex + ", individual " + individualId + ". Ignoring this genotype.\n");
 	                        problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
 	                    } else {
-	                        zos.write((" " + all1 + " " + all2).getBytes());
+	                        sb.append((" " + all1 + " " + all2));
 	                    }
 	
 	                    nMarkerIndex++;
@@ -207,7 +208,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	                progress.setCurrentStepProgress(nProgress);
 	                nPreviousProgress = nProgress;
 	            }
-	            zos.write('\n');
+	            zos.write((sb.toString() + "\n").getBytes());
 	        }
         }
         finally
@@ -223,8 +224,8 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 
         zos.putNextEntry(new ZipEntry(exportName + ".map"));
 
-        int avgObjSize = (Integer) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
-        int nChunkSize = nMaxChunkSizeInMb * 1024 * 1024 / avgObjSize;
+    	Number avgObjSize = (Number) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
+        int nChunkSize = (int) (nMaxChunkSizeInMb * 1024 * 1024 / avgObjSize.doubleValue());
 
         markerCursor.batchSize(nChunkSize);
         int nMarkerIndex = 0;
@@ -241,9 +242,9 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
             zos.write(((chrom == null ? "0" : chrom) + " " + exportedId + " " + 0 + " " + (pos == null ? 0 : pos) + LINE_SEPARATOR).getBytes());
 
             if (problematicMarkerIndexToNameMap.containsKey(nMarkerIndex)) {	// we are going to need this marker's name for the warning file
-                Comparable variantName = markerId;
+            	Comparable variantName = markerId;
                 if (markerSynonyms != null) {
-                    Comparable syn = markerSynonyms.get(markerId);
+                	Comparable syn = markerSynonyms.get(markerId);
                     if (syn != null) {
                         variantName = syn;
                     }
@@ -267,7 +268,6 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
                     sLine = sLine.replaceAll("__" + aMarkerIndex + "__", problematicMarkerIndexToNameMap.get(aMarkerIndex).toString());
                 }
                 zos.write((sLine + "\n").getBytes());
-                sLine = in.readLine();
                 nWarningCount++;
             }
             LOG.info("Number of Warnings for export (" + exportName + "): " + nWarningCount);
