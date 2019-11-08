@@ -333,14 +333,13 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
             }
         }
 
-        StringBuffer indSB = new StringBuffer();
         String exportName = sModule + "__" + markerCount + "variants__" + sortedIndividuals.size() + "individuals";
         zos.putNextEntry(new ZipEntry(exportName + ".hapmap"));
         String header = "rs#" + "\t" + "alleles" + "\t" + "chrom" + "\t" + "pos" + "\t" + "strand" + "\t" + "assembly#" + "\t" + "center" + "\t" + "protLSID" + "\t" + "assayLSID" + "\t" + "panelLSID" + "\t" + "QCcode";
-        indSB.append(header);
+        zos.write(header.getBytes());
         for (String individual : sortedIndividuals)
-        	indSB.append("\t" + individual);
-        indSB.append(LINE_SEPARATOR);
+            zos.write(("\t" + individual).getBytes());
+        zos.write((LINE_SEPARATOR).getBytes());
 
 		AbstractDataOutputHandler<Integer, LinkedHashMap<VariantData, Collection<VariantRunData>>> dataOutputHandler = new AbstractDataOutputHandler<Integer, LinkedHashMap<VariantData, Collection<VariantRunData>>>() {				
 			@Override
