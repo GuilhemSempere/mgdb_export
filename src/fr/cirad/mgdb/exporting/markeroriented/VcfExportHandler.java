@@ -211,7 +211,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 					while (markerCursorCopy.hasNext() && (fStartingNewChunk || nLoadedMarkerCountInLoop%nQueryChunkSize != 0)) {
 						DBObject exportVariant = markerCursorCopy.next();
 						String chr = (String) ((DBObject) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION)).get(ReferencePosition.FIELDNAME_SEQUENCE);
-						if (!distinctSequenceNames.contains(chr))
+						if (chr != null && !distinctSequenceNames.contains(chr))
 							distinctSequenceNames.add(chr);
 					}
 				}
@@ -219,7 +219,8 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 			}
 			else
 				for (Object chr : markerCursor.getCollection().distinct(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ReferencePosition.FIELDNAME_SEQUENCE, markerCursor.getQuery()))	// find out distinctSequenceNames by looking at exported variant list
-					distinctSequenceNames.add((String) chr);
+					if (chr != null)
+						distinctSequenceNames.add((String) chr);
 
 			Collections.sort(distinctSequenceNames, new AlphaNumericComparator());
 			SAMSequenceDictionary dict = createSAMSequenceDictionary(sModule, distinctSequenceNames);
