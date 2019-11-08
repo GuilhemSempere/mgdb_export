@@ -263,7 +263,6 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
                     sLine = sLine.replaceAll("__" + aMarkerIndex + "__", problematicMarkerIndexToNameMap.get(aMarkerIndex).toString());
                 }
                 zos.write((sLine + "\n").getBytes());
-                sLine = in.readLine();
                 nWarningCount++;
             }
             LOG.info("Number of Warnings for export (" + exportName + "): " + nWarningCount);

@@ -54,7 +54,6 @@ import org.apache.log4j.Logger;
 import org.springframework.data.mongodb.core.MongoTemplate;
 
 import com.mongodb.DBCursor;
-import com.mongodb.DBObject;
 
 /**
  * The Class EigenstratExportHandler.
@@ -70,6 +69,8 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
      * The Constant EIGENSTRAT_FORMAT.
      */
     public static final String EIGENSTRAT_FORMAT = "EIGENSTRAT";
+    
+	public static final byte missingData = 9;
 
     /**
      * The supported variant types.
@@ -187,6 +188,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
     		AbstractDataOutputHandler<Integer, LinkedHashMap<VariantData, Collection<VariantRunData>>> dataOutputHandler = new AbstractDataOutputHandler<Integer, LinkedHashMap<VariantData, Collection<VariantRunData>>>() {				
     			@Override
     			public Void call() {
+    				StringBuffer sb = new StringBuffer();
     				for (VariantData variant : variantDataChunkMap.keySet())
     					try
     					{
@@ -227,9 +229,8 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
     	                    boolean fFirstLoopExecution = true;
     	                    if (individualGenotypes.isEmpty())
     	                    {
-    	                    	byte[] missingDataBytes = "9".getBytes();
     	                    	for (int i=0; i<sortedIndividuals.size(); i++)
-    	                    		zos.write(missingDataBytes);
+    	                    		sb.append(missingData);
     	                    	warningFileWriter.write("- No genotypes found for variant " + (variantId == null ? variant.getId() : variantId) + "\n");
     	                    }
     	                    else
@@ -266,7 +267,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
     		                        if (fFirstLoopExecution && variant.getKnownAlleleList().size() > 2) {
     		                            warningFileWriter.write("- Variant " + variant.getId() + " is multi-allelic. Make sure Eigenstrat genotype encoding specifications are suitable for you.\n");
     		                        }
-    		                        zos.write(("" + nOutputCode).getBytes());
+    		                        sb.append(nOutputCode);
     		
     		                        if (genotypeCounts.size() > 1 || alleles.size() > 2) {
     		                            if (genotypeCounts.size() > 1) {
@@ -278,7 +279,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
     		                        }
     		                        fFirstLoopExecution = false;
     		                    }
-    		                    zos.write((LINE_SEPARATOR).getBytes());
+    		                    sb.append(LINE_SEPARATOR);
     		                }
     					catch (Exception e)
     					{
@@ -293,12 +294,21 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 							}
      	                    catch (IOException ignored) {}
     					}
+    				
+                    try
+                    {
+        				zos.write(sb.toString().getBytes());
+					}
+	                catch (IOException ioe)
+                    {
+	                	progress.setError("Unable to export data for " + variantDataChunkMap.keySet() + ": " + ioe.getMessage());
+                    }
     				return null;
     			}
     		};
     		
         	Number avgObjSize = (Number) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
-    		int nQueryChunkSize = (int) Math.max(1, (nMaxChunkSizeInMb*1024*1024 / avgObjSize.doubleValue()) / AsyncExportTool.INITIAL_NUMBER_OF_SIMULTANEOUS_QUERY_THREADS);
+    		int nQueryChunkSize = (int) Math.max(1, (nMaxChunkSizeInMb*1024*1024 / avgObjSize.doubleValue()) / AsyncExportTool.WRITING_QUEUE_CAPACITY);
     		AsyncExportTool syncExportTool = new AsyncExportTool(markerCursor, markerCount, nQueryChunkSize, mongoTemplate, samplesToExport, dataOutputHandler, progress);
     		syncExportTool.launch();
 

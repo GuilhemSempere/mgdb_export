@@ -20,6 +20,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.text.NumberFormat;
@@ -140,6 +141,7 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 		AbstractDataOutputHandler<Integer, LinkedHashMap<VariantData, Collection<VariantRunData>>> dataOutputHandler = new AbstractDataOutputHandler<Integer, LinkedHashMap<VariantData, Collection<VariantRunData>>>() {				
 			@Override
 			public Void call() {
+				StringBuffer sb = new StringBuffer();
 				for (VariantData variant : variantDataChunkMap.keySet())
 					try
 					{
@@ -179,9 +181,9 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 		                String chrom = variant.getReferencePosition() == null ? "0" : variant.getReferencePosition().getSequence();
 		                long start = variant.getReferencePosition() == null ? 0 : variant.getReferencePosition().getStartSite();
 		                long end = Type.SNP.equals(variant.getType()) ? start : start + refAllele.length() - 1;
-		                zos.write((chrom + "\t" + StringUtils.join(variantDataOrigin, ";") /*source*/ + "\t" + typeToOntology.get(variant.getType()) + "\t" + start + "\t" + end + "\t" + "." + "\t" + "+" + "\t" + "." + "\t").getBytes());
+		                sb.append(chrom + "\t" + StringUtils.join(variantDataOrigin, ";") /*source*/ + "\t" + typeToOntology.get(variant.getType()) + "\t" + start + "\t" + end + "\t" + "." + "\t" + "+" + "\t" + "." + "\t");
 		                Comparable syn = markerSynonyms == null ? null : markerSynonyms.get(variant.getId());
-		                zos.write(("ID=" + variant.getId() + ";" + (syn != null ? "Name=" + syn + ";" : "") + "alleles=" + StringUtils.join(variant.getKnownAlleleList(), "/") + ";" + "refallele=" + refAllele + ";").getBytes());
+		                sb.append("ID=" + variant.getId() + ";" + (syn != null ? "Name=" + syn + ";" : "") + "alleles=" + StringUtils.join(variant.getKnownAlleleList(), "/") + ";" + "refallele=" + refAllele + ";");
 
 		                for (String individualId : individualGenotypes.keySet() /* we use this object because it has the proper ordering*/) {
 		                    NumberFormat nf = NumberFormat.getInstance(Locale.US);
@@ -234,19 +236,19 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 		                    List<String> alleles = mostFrequentGenotype == null ? new ArrayList<>() : variant.getAllelesFromGenotypeCode(mostFrequentGenotype);
 
 		                    if (!alleles.isEmpty()) {
-		                        zos.write(("acounts=" + individualId + ":").getBytes());
+		                        sb.append("acounts=" + individualId + ":");
 
 		                        for (String knowAllelesCompt : compt1.keySet()) {
-		                            zos.write((knowAllelesCompt + " " + nf.format(compt1.get(knowAllelesCompt) / (float) sum) + " " + compt1.get(knowAllelesCompt) + " ").getBytes());
+		                            sb.append(knowAllelesCompt + " " + nf.format(compt1.get(knowAllelesCompt) / (float) sum) + " " + compt1.get(knowAllelesCompt) + " ");
 		                        }
-		                        zos.write((alleles.size() + ";").getBytes());
+		                        sb.append(alleles.size() + ";");
 		                    }
 		                    if (genotypeCounts.size() > 1) {
 		                        Comparable sVariantId = markerSynonyms != null ? markerSynonyms.get(variant.getId()) : variant.getId();
 		                        warningFileWriter.write("- Dissimilar genotypes found for variant " + (sVariantId == null ? variant.getId() : sVariantId) + ", individual " + individualId + ". Exporting most frequent: " + StringUtils.join(alleles, ",") + "\n");
 		                    }
 		                }
-		                zos.write((LINE_SEPARATOR).getBytes());		            
+		                sb.append(LINE_SEPARATOR);		            
 		            }
 					catch (Exception e)
 					{
@@ -254,12 +256,21 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 							LOG.debug("Unable to export " + variant.getId(), e);
 						progress.setError("Unable to export " + variant.getId() + ": " + e.getMessage());
 					}
+				
+                try
+                {
+    				zos.write(sb.toString().getBytes());
+				}
+                catch (IOException ioe)
+                {
+                	progress.setError("Unable to export data for " + variantDataChunkMap.keySet() + ": " + ioe.getMessage());
+                }
 				return null;
 			}
 		};        
         
     	Number avgObjSize = (Number) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
-		int nQueryChunkSize = (int) Math.max(1, (nMaxChunkSizeInMb*1024*1024 / avgObjSize.doubleValue()) / AsyncExportTool.INITIAL_NUMBER_OF_SIMULTANEOUS_QUERY_THREADS);
+		int nQueryChunkSize = (int) Math.max(1, (nMaxChunkSizeInMb*1024*1024 / avgObjSize.doubleValue()) / AsyncExportTool.WRITING_QUEUE_CAPACITY);
 		AsyncExportTool syncExportTool = new AsyncExportTool(markerCursor, markerCount, nQueryChunkSize, mongoTemplate, samplesToExport, dataOutputHandler, progress);
 		syncExportTool.launch();
 
@@ -279,7 +290,6 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
             String sLine;
             while ((sLine = in.readLine()) != null) {
                 zos.write((sLine + "\n").getBytes());
-                in.readLine();
                 nWarningCount++;
             }
             LOG.info("Number of Warnings for export (" + exportName + "): " + nWarningCount);
