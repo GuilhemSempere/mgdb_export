@@ -117,7 +117,7 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 				fStartingNewChunk = false;
 			}
 
-			for (String variantId : markerChromosomalPositions.keySet()) // read data and write results into temporary files (one per sample)
+			for (String variantId : markerChromosomalPositions.keySet())
 			{
 				String refPos = markerChromosomalPositions.get(variantId);
 				if (refPos != null)
