@@ -97,7 +97,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 	@Override
 	public String getExportFormatDescription()
 	{
-		return "Exports data in Variant Call Format. See <a target='_blank' href='http://www.1000genomes.org/wiki/Analysis/Variant%20Call%20Format/vcf-variant-call-format-version-41'>http://www.1000genomes.org/wiki/Analysis/Variant%20Call%20Format/vcf-variant-call-format-version-41</a> for more details.";
+		return "Exports data in Variant Call Format. See <a target='_blank' href='http://samtools.github.io/hts-specs/VCFv4.1.pdf'>http://samtools.github.io/hts-specs/VCFv4.1.pdf</a> for more details.";
 	}
 
 	/* (non-Javadoc)
