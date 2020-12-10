@@ -16,31 +16,6 @@
  *******************************************************************************/
 package fr.cirad.mgdb.exporting.markeroriented;
 
-import fr.cirad.mgdb.model.mongo.maintypes.Sequence;
-import fr.cirad.mgdb.model.mongo.maintypes.SequenceStats;
-import fr.cirad.mgdb.exporting.tools.AsyncExportTool;
-import fr.cirad.mgdb.exporting.tools.AsyncExportTool.AbstractDataOutputHandler;
-import fr.cirad.mgdb.model.mongo.maintypes.DBVCFHeader;
-import fr.cirad.mgdb.model.mongo.maintypes.DBVCFHeader.VcfHeaderId;
-import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
-import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
-import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
-import fr.cirad.mgdb.model.mongo.maintypes.GenotypingSample;
-import fr.cirad.mgdb.model.mongodao.MgdbDao;
-import fr.cirad.tools.AlphaNumericComparator;
-import fr.cirad.tools.ProgressIndicator;
-import fr.cirad.tools.mongo.MongoTemplateManager;
-import htsjdk.samtools.SAMSequenceDictionary;
-import htsjdk.samtools.SAMSequenceRecord;
-import htsjdk.variant.variantcontext.VariantContext;
-import htsjdk.variant.variantcontext.writer.CustomVCFWriter;
-import htsjdk.variant.variantcontext.writer.VariantContextWriter;
-import htsjdk.variant.vcf.VCFContigHeaderLine;
-import htsjdk.variant.vcf.VCFFormatHeaderLine;
-import htsjdk.variant.vcf.VCFHeader;
-import htsjdk.variant.vcf.VCFHeaderLine;
-import htsjdk.variant.vcf.VCFHeaderLineType;
-
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -62,17 +37,40 @@ import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-import org.apache.commons.collections.CollectionUtils;
 import org.apache.log4j.Logger;
-import org.bson.types.ObjectId;
+import org.bson.Document;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.mapreduce.MapReduceResults;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 
-import com.mongodb.BasicDBObject;
-import com.mongodb.DBCursor;
-import com.mongodb.DBObject;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
+
+import fr.cirad.mgdb.exporting.tools.AsyncExportTool;
+import fr.cirad.mgdb.exporting.tools.AsyncExportTool.AbstractDataOutputHandler;
+import fr.cirad.mgdb.model.mongo.maintypes.DBVCFHeader;
+import fr.cirad.mgdb.model.mongo.maintypes.DBVCFHeader.VcfHeaderId;
+import fr.cirad.mgdb.model.mongo.maintypes.GenotypingSample;
+import fr.cirad.mgdb.model.mongo.maintypes.Sequence;
+import fr.cirad.mgdb.model.mongo.maintypes.SequenceStats;
+import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
+import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
+import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
+import fr.cirad.mgdb.model.mongodao.MgdbDao;
+import fr.cirad.tools.AlphaNumericComparator;
+import fr.cirad.tools.ProgressIndicator;
+import fr.cirad.tools.mongo.MongoTemplateManager;
+import htsjdk.samtools.SAMSequenceDictionary;
+import htsjdk.samtools.SAMSequenceRecord;
+import htsjdk.variant.variantcontext.VariantContext;
+import htsjdk.variant.variantcontext.writer.CustomVCFWriter;
+import htsjdk.variant.variantcontext.writer.VariantContextWriter;
+import htsjdk.variant.vcf.VCFContigHeaderLine;
+import htsjdk.variant.vcf.VCFFormatHeaderLine;
+import htsjdk.variant.vcf.VCFHeader;
+import htsjdk.variant.vcf.VCFHeaderLine;
+import htsjdk.variant.vcf.VCFHeaderLineType;
 
 /**
  * The Class VcfExportHandler.
@@ -148,7 +146,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 	}
 
     @Override
-    public void exportData(OutputStream outputStream, String sModule, Collection<GenotypingSample> samples1, Collection<GenotypingSample> samples2, ProgressIndicator progress, DBCursor markerCursor, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, Collection<GenotypingSample> samples1, Collection<GenotypingSample> samples2, ProgressIndicator progress, MongoCollection<Document> varColl, Document varQuery, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
         
 		List<String> individuals1 = MgdbDao.getIndividualsFromSamples(sModule, samples1).stream().map(ind -> ind.getId()).collect(Collectors.toList());	
 		List<String> individuals2 = MgdbDao.getIndividualsFromSamples(sModule, samples2).stream().map(ind -> ind.getId()).collect(Collectors.toList());
@@ -171,7 +169,6 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		FileWriter warningFileWriter = new FileWriter(warningFile);
 
 		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
-		int markerCount = markerCursor.count();
 		ZipOutputStream zos = new ZipOutputStream(outputStream);
 
 		if (readyToExportFiles != null)
@@ -188,9 +185,10 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				zos.closeEntry();
 			}
 
+		long markerCount = varColl.countDocuments(varQuery);
 		String exportName = sModule + "__" + markerCount + "variants__" + sortedIndividuals.size() + "individuals";
 
-    	Number avgObjSize = (Number) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
+		Number avgObjSize = (Number) mongoTemplate.getDb().runCommand(new Document("collStats", mongoTemplate.getCollectionName(VariantRunData.class))).get("avgObjSize");
 		int nQueryChunkSize = (int) Math.max(1, (nMaxChunkSizeInMb*1024*1024 / avgObjSize.doubleValue()) / AsyncExportTool.WRITING_QUEUE_CAPACITY);
 
 		VariantContextWriter writer = null;
@@ -201,26 +199,24 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 
 			String sequenceSeqCollName = MongoTemplateManager.getMongoCollectionName(Sequence.class);
 			if (mongoTemplate.collectionExists(sequenceSeqCollName))
-			{
-				DBCursor markerCursorCopy = markerCursor.copy();
-				markerCursorCopy.batchSize(nQueryChunkSize);
-				while (markerCursorCopy.hasNext())
-				{
-					int nLoadedMarkerCountInLoop = 0;
-					boolean fStartingNewChunk = true;
-					while (markerCursorCopy.hasNext() && (fStartingNewChunk || nLoadedMarkerCountInLoop%nQueryChunkSize != 0)) {
-						DBObject exportVariant = markerCursorCopy.next();
-						String chr = (String) ((DBObject) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION)).get(ReferencePosition.FIELDNAME_SEQUENCE);
-						if (chr != null && !distinctSequenceNames.contains(chr))
-							distinctSequenceNames.add(chr);
+				try (MongoCursor<Document> markerCursor = varColl.find(varQuery).projection(projectionDoc).sort(sortDoc).noCursorTimeout(true).collation(collationObj).batchSize(nQueryChunkSize).iterator()) {
+					while (markerCursor.hasNext())
+					{
+						int nLoadedMarkerCountInLoop = 0;
+						boolean fStartingNewChunk = true;
+						while (markerCursor.hasNext() && (fStartingNewChunk || nLoadedMarkerCountInLoop%nQueryChunkSize != 0)) {
+							Document exportVariant = markerCursor.next();
+							String chr = (String) ((Document) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION)).get(ReferencePosition.FIELDNAME_SEQUENCE);
+							if (chr != null && !distinctSequenceNames.contains(chr))
+								distinctSequenceNames.add(chr);
+						}
 					}
 				}
-				markerCursorCopy.close();
-			}
-			else
-				for (Object chr : markerCursor.getCollection().distinct(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ReferencePosition.FIELDNAME_SEQUENCE, markerCursor.getQuery()))	// find out distinctSequenceNames by looking at exported variant list
-					if (chr != null)
-						distinctSequenceNames.add((String) chr);
+				else {
+					for (String chr : varColl.distinct(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ReferencePosition.FIELDNAME_SEQUENCE, varQuery, String.class))	// find out distinctSequenceNames by looking at exported variant list
+						if (chr != null)
+							distinctSequenceNames.add(chr);
+				}
 
 			Collections.sort(distinctSequenceNames, new AlphaNumericComparator());
 			SAMSequenceDictionary dict = createSAMSequenceDictionary(sModule, distinctSequenceNames);
@@ -235,16 +231,19 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 //			writer = new AsyncVariantContextWriter(writer, 3000);
 
 			progress.moveToNextStep();	// done with dictionary
-			DBCursor headerCursor = mongoTemplate.getCollection(MongoTemplateManager.getMongoCollectionName(DBVCFHeader.class)).find(new BasicDBObject("_id." + VcfHeaderId.FIELDNAME_PROJECT, projectId));
+			MongoCollection<org.bson.Document> vcfHeaderColl = mongoTemplate.getCollection(MongoTemplateManager.getMongoCollectionName(DBVCFHeader.class));
+			Document vcfHeaderQuery = new Document("_id." + VcfHeaderId.FIELDNAME_PROJECT, projectId);
+			long nHeaderCount = vcfHeaderColl.countDocuments(vcfHeaderQuery);
+			MongoCursor<Document> headerCursor = vcfHeaderColl.find(vcfHeaderQuery).iterator();
 			Set<VCFHeaderLine> headerLines = new HashSet<VCFHeaderLine>();
 			boolean fWriteCommandLine = true, fWriteEngineHeaders = true;	// default values
 
 			while (headerCursor.hasNext())
 			{
-				DBVCFHeader dbVcfHeader = DBVCFHeader.fromDBObject(headerCursor.next());
+				DBVCFHeader dbVcfHeader = DBVCFHeader.fromDocument(headerCursor.next());
 				headerLines.addAll(dbVcfHeader.getHeaderLines());
 
-				fWriteCommandLine = headerCursor.size() == 1 && dbVcfHeader.getWriteCommandLine();	// wouldn't make sense to include command lines for several runs
+				fWriteCommandLine = nHeaderCount == 1 && dbVcfHeader.getWriteCommandLine();	// wouldn't make sense to include command lines for several runs
 				if (!dbVcfHeader.getWriteEngineHeaders())
 					fWriteEngineHeaders = false;
 			}
@@ -254,7 +253,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				headerLines.add(new VCFFormatHeaderLine("GT", 1, VCFHeaderLineType.String, "Genotype"));	// minimum required
 			
 			// Add sequence header lines (not stored in our vcf header collection)
-			BasicDBObject projection = new BasicDBObject(SequenceStats.FIELDNAME_SEQUENCE_LENGTH, true);
+			Document projection = new Document(SequenceStats.FIELDNAME_SEQUENCE_LENGTH, true);
 			int nSequenceIndex = 0;
 			String sequenceInfoCollName = MongoTemplateManager.getMongoCollectionName(SequenceStats.class);
 			boolean fCollectionExists = mongoTemplate.collectionExists(sequenceInfoCollName);
@@ -262,7 +261,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 			{
 				Map<String, String> sequenceLineData = new LinkedHashMap<String, String>();
 				if (fCollectionExists) {
-					DBObject record = mongoTemplate.getCollection(sequenceInfoCollName).findOne(new Query(Criteria.where("_id").is(sequenceName)).getQueryObject(), projection);
+					Document record = mongoTemplate.getCollection(sequenceInfoCollName).find(new Query(Criteria.where("_id").is(sequenceName)).getQueryObject()).projection(projection).first();
 					if (record == null)
 					{
 						LOG.warn("Sequence '" + sequenceName + "' not found in collection " + sequenceInfoCollName);
@@ -307,11 +306,13 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				}
 			};			
 			
-			AsyncExportTool syncExportTool = new AsyncExportTool(markerCursor, markerCount, nQueryChunkSize, mongoTemplate, samplesToExport, dataOutputHandler, progress);
-			syncExportTool.launch();
-
-			while (progress.getCurrentStepProgress() < 100 && !progress.isAborted())
-				Thread.sleep(500);
+			try (MongoCursor<Document> markerCursor = varColl.find(varQuery).projection(projectionDoc).sort(sortDoc).noCursorTimeout(true).collation(collationObj).batchSize(nQueryChunkSize).iterator()) {
+				AsyncExportTool syncExportTool = new AsyncExportTool(markerCursor, markerCount, nQueryChunkSize, mongoTemplate, samplesToExport, dataOutputHandler, progress);
+				syncExportTool.launch();
+	
+				while (progress.getCurrentStepProgress() < 100 && !progress.isAborted())
+					Thread.sleep(500);
+			}
 			zos.closeEntry();
 		}
 		catch (Exception e)

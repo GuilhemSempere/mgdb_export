@@ -23,6 +23,7 @@ import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
 import fr.cirad.tools.Helper;
 import fr.cirad.tools.ProgressIndicator;
 import fr.cirad.tools.mongo.MongoTemplateManager;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -38,11 +39,15 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+
 import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
+import org.bson.Document;
 import org.springframework.data.mongodb.core.MongoTemplate;
-import com.mongodb.DBCursor;
-import com.mongodb.DBObject;
+
+import com.mongodb.client.FindIterable;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
 
 /**
  * The Class FlapjackExportHandler.
@@ -79,7 +84,7 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
 	 * @see fr.cirad.mgdb.exporting.individualoriented.AbstractIndividualOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.Collection, boolean, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, java.util.Map)
      */
     @Override
-    public void exportData(OutputStream outputStream, String sModule, Collection<File> individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, DBCursor markerCursor, Map<String, String> markerSynonyms, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, Collection<File> individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, MongoCollection<Document> varColl, Document varQuery, Map<String, String> markerSynonyms, Map<String, InputStream> readyToExportFiles) throws Exception {
         File warningFile = File.createTempFile("export_warnings_", "");
         FileWriter warningFileWriter = new FileWriter(warningFile);
 
@@ -100,22 +105,22 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
         }
 
         MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
-        int markerCount = markerCursor.count();
-    	Number avgObjSize = (Number) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
-        int nChunkSize = (int) (nMaxChunkSizeInMb * 1024 * 1024 / avgObjSize.doubleValue());
+        Number avgObjSize = (Number) mongoTemplate.getDb().runCommand(new Document("collStats", mongoTemplate.getCollectionName(VariantRunData.class))).get("avgObjSize");
+        int nQueryChunkSize = (int) (nMaxChunkSizeInMb * 1024 * 1024 / avgObjSize.doubleValue());
         
+		long markerCount = varColl.countDocuments(varQuery);
         String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.size() + "individuals";
         zos.putNextEntry(new ZipEntry(exportName + ".genotype"));
         zos.write(("# fjFile = GENOTYPE" + LINE_SEPARATOR).getBytes());
         
-        DBCursor markerCursorCopy = markerCursor.copy();
-        markerCursorCopy.batchSize(nChunkSize);
-        while (markerCursorCopy.hasNext()) {
-            DBObject exportVariant = markerCursorCopy.next();
-            Comparable markerId = (Comparable) exportVariant.get("_id");
-            Comparable exportedId = markerSynonyms == null ? markerId : markerSynonyms.get(markerId);
-            zos.write(("\t" + exportedId).getBytes());
-        }
+		try (MongoCursor<Document> markerCursor = varColl.find(varQuery).projection(projectionDoc).sort(sortDoc).noCursorTimeout(true).collation(collationObj).batchSize(nQueryChunkSize).iterator()) {
+	        while (markerCursor.hasNext()) {
+	            Document exportVariant = markerCursor.next();
+	            Comparable markerId = (Comparable) exportVariant.get("_id");
+	            Comparable exportedId = markerSynonyms == null ? markerId : markerSynonyms.get(markerId);
+	            zos.write(("\t" + exportedId).getBytes());
+	        }
+		}
         zos.write(LINE_SEPARATOR.getBytes());
 
         TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = new TreeMap<Integer, Comparable>();
@@ -209,33 +214,33 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
         zos.putNextEntry(new ZipEntry(exportName + ".map"));
         zos.write(("# fjFile = MAP" + LINE_SEPARATOR).getBytes());
 
-        markerCursor.batchSize(nChunkSize);
         int nMarkerIndex = 0;
         ArrayList<String> unassignedMarkers = new ArrayList<>();
-        while (markerCursor.hasNext()) {
-            DBObject exportVariant = markerCursor.next();
-            DBObject refPos = (DBObject) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION);
-            String markerId = (String) exportVariant.get("_id");
-            String chrom = refPos == null ? null : (String) refPos.get(ReferencePosition.FIELDNAME_SEQUENCE);
-            Long pos = refPos == null ? null : ((Number) refPos.get(ReferencePosition.FIELDNAME_START_SITE)).longValue();
-            if (chrom == null) 
-            	unassignedMarkers.add(markerId);
-
-            String exportedId = markerSynonyms == null ? markerId : markerSynonyms.get(markerId);
-            zos.write((exportedId + "\t" + (chrom == null ? "0" : chrom) + "\t" + (pos == null ? 0 : pos) + LINE_SEPARATOR).getBytes());
-
-            if (problematicMarkerIndexToNameMap.containsKey(nMarkerIndex)) {	// we are going to need this marker's name for the warning file
-            	String variantName = markerId;
-                if (markerSynonyms != null) {
-                	String syn = markerSynonyms.get(markerId);
-                    if (syn != null) {
-                        variantName = syn;
-                    }
-                }
-                problematicMarkerIndexToNameMap.put(nMarkerIndex, variantName);
-            }
-            nMarkerIndex++;
-        }
+		try (MongoCursor<Document> markerCursor = varColl.find(varQuery).projection(projectionDoc).sort(sortDoc).noCursorTimeout(true).collation(collationObj).batchSize(nQueryChunkSize).iterator()) {
+	        while (markerCursor.hasNext()) {
+	            Document exportVariant = markerCursor.next();
+	            Document refPos = (Document) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION);
+	            String markerId = (String) exportVariant.get("_id");
+	            String chrom = refPos == null ? null : (String) refPos.get(ReferencePosition.FIELDNAME_SEQUENCE);
+	            Long pos = refPos == null ? null : ((Number) refPos.get(ReferencePosition.FIELDNAME_START_SITE)).longValue();
+	            if (chrom == null) 
+	            	unassignedMarkers.add(markerId);
+	
+	            String exportedId = markerSynonyms == null ? markerId : markerSynonyms.get(markerId);
+	            zos.write((exportedId + "\t" + (chrom == null ? "0" : chrom) + "\t" + (pos == null ? 0 : pos) + LINE_SEPARATOR).getBytes());
+	
+	            if (problematicMarkerIndexToNameMap.containsKey(nMarkerIndex)) {	// we are going to need this marker's name for the warning file
+	            	String variantName = markerId;
+	                if (markerSynonyms != null) {
+	                	String syn = markerSynonyms.get(markerId);
+	                    if (syn != null)
+	                        variantName = syn;
+	                }
+	                problematicMarkerIndexToNameMap.put(nMarkerIndex, variantName);
+	            }
+	            nMarkerIndex++;
+	        }
+	    }
         zos.closeEntry();
         
         if (unassignedMarkers.size() > 0)
@@ -247,9 +252,8 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
             BufferedReader in = new BufferedReader(new FileReader(warningFile));
             String sLine;
             while ((sLine = in.readLine()) != null) {
-                for (Integer aMarkerIndex : problematicMarkerIndexToNameMap.keySet()) {
+                for (Integer aMarkerIndex : problematicMarkerIndexToNameMap.keySet())
                     sLine = sLine.replaceAll("__" + aMarkerIndex + "__", problematicMarkerIndexToNameMap.get(aMarkerIndex).toString());
-                }
                 zos.write((sLine + "\n").getBytes());
                 nWarningCount++;
             }

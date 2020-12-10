@@ -43,10 +43,11 @@ import java.util.zip.ZipOutputStream;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
+import org.bson.Document;
 import org.springframework.data.mongodb.core.MongoTemplate;
 
-import com.mongodb.DBCursor;
-import com.mongodb.DBObject;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
 
 /**
  * The Class PLinkExportHandler.
@@ -101,7 +102,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	 * @see fr.cirad.mgdb.exporting.individualoriented.AbstractIndividualOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.Collection, boolean, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, java.util.Map)
      */
     @Override
-    public void exportData(OutputStream outputStream, String sModule, Collection<File> individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, DBCursor markerCursor, Map<String, String> markerSynonyms, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, Collection<File> individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, MongoCollection<Document> varColl, Document varQuery, Map<String, String> markerSynonyms, Map<String, InputStream> readyToExportFiles) throws Exception {
         File warningFile = File.createTempFile("export_warnings_", "");
         FileWriter warningFileWriter = new FileWriter(warningFile);
 
@@ -122,8 +123,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
         }
 
         MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
-        int markerCount = markerCursor.count();
-
+		long markerCount = varColl.countDocuments(varQuery);
         String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.size() + "individuals";
         zos.putNextEntry(new ZipEntry(exportName + ".ped"));
 
@@ -219,35 +219,34 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 
         zos.putNextEntry(new ZipEntry(exportName + ".map"));
 
-    	Number avgObjSize = (Number) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
-        int nChunkSize = (int) (nMaxChunkSizeInMb * 1024 * 1024 / avgObjSize.doubleValue());
-
-        markerCursor.batchSize(nChunkSize);
         int nMarkerIndex = 0;
         ArrayList<Comparable> unassignedMarkers = new ArrayList<>();
-        while (markerCursor.hasNext()) {
-            DBObject exportVariant = markerCursor.next();
-            DBObject refPos = (DBObject) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION);
-            Long pos = refPos == null ? null : ((Number) refPos.get(ReferencePosition.FIELDNAME_START_SITE)).longValue();
-            String markerId = (String) exportVariant.get("_id");
-            String chrom = refPos == null ? null : (String) refPos.get(ReferencePosition.FIELDNAME_SEQUENCE);
-            if (chrom == null)
-            	unassignedMarkers.add(markerId);
-            String exportedId = markerSynonyms == null ? markerId : markerSynonyms.get(markerId);
-            zos.write(((chrom == null ? "0" : chrom) + " " + exportedId + " " + 0 + " " + (pos == null ? 0 : pos) + LINE_SEPARATOR).getBytes());
-
-            if (problematicMarkerIndexToNameMap.containsKey(nMarkerIndex)) {	// we are going to need this marker's name for the warning file
-            	String variantName = markerId;
-                if (markerSynonyms != null) {
-                	String syn = markerSynonyms.get(markerId);
-                    if (syn != null) {
-                        variantName = syn;
-                    }
-                }
-                problematicMarkerIndexToNameMap.put(nMarkerIndex, variantName);
-            }
-            nMarkerIndex++;
-        }
+        Number avgObjSize = (Number) mongoTemplate.getDb().runCommand(new Document("collStats", mongoTemplate.getCollectionName(VariantRunData.class))).get("avgObjSize");
+		int nQueryChunkSize = (int) (nMaxChunkSizeInMb * 1024 * 1024 / avgObjSize.doubleValue());
+		try (MongoCursor<Document> markerCursor = varColl.find(varQuery).projection(projectionDoc).sort(sortDoc).noCursorTimeout(true).collation(collationObj).batchSize(nQueryChunkSize).iterator()) {
+	        while (markerCursor.hasNext()) {
+	            Document exportVariant = markerCursor.next();
+	            Document refPos = (Document) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION);
+	            Long pos = refPos == null ? null : ((Number) refPos.get(ReferencePosition.FIELDNAME_START_SITE)).longValue();
+	            String markerId = (String) exportVariant.get("_id");
+	            String chrom = refPos == null ? null : (String) refPos.get(ReferencePosition.FIELDNAME_SEQUENCE);
+	            if (chrom == null)
+	            	unassignedMarkers.add(markerId);
+	            String exportedId = markerSynonyms == null ? markerId : markerSynonyms.get(markerId);
+	            zos.write(((chrom == null ? "0" : chrom) + " " + exportedId + " " + 0 + " " + (pos == null ? 0 : pos) + LINE_SEPARATOR).getBytes());
+	
+	            if (problematicMarkerIndexToNameMap.containsKey(nMarkerIndex)) {	// we are going to need this marker's name for the warning file
+	            	String variantName = markerId;
+	                if (markerSynonyms != null) {
+	                	String syn = markerSynonyms.get(markerId);
+	                    if (syn != null)
+	                        variantName = syn;
+	                }
+	                problematicMarkerIndexToNameMap.put(nMarkerIndex, variantName);
+	            }
+	            nMarkerIndex++;
+	        }
+		}
         zos.closeEntry();
         
         if (unassignedMarkers.size() > 0)

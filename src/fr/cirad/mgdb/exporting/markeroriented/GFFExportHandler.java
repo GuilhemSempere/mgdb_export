@@ -39,9 +39,11 @@ import java.util.zip.ZipOutputStream;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
+import org.bson.Document;
 import org.springframework.data.mongodb.core.MongoTemplate;
 
-import com.mongodb.DBCursor;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
 
 import fr.cirad.mgdb.exporting.tools.AsyncExportTool;
 import fr.cirad.mgdb.exporting.tools.AsyncExportTool.AbstractDataOutputHandler;
@@ -91,7 +93,7 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 	 * @see fr.cirad.mgdb.exporting.markeroriented.AbstractMarkerOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.List, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, int, int, java.util.Map)
      */
     @Override
-    public void exportData(OutputStream outputStream, String sModule, Collection<GenotypingSample> samples1, Collection<GenotypingSample> samples2, ProgressIndicator progress, DBCursor markerCursor, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Map<String, InputStream> readyToExportFiles) throws Exception 
+    public void exportData(OutputStream outputStream, String sModule, Collection<GenotypingSample> samples1, Collection<GenotypingSample> samples2, ProgressIndicator progress, MongoCollection<Document> varColl, Document varQuery, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Map<String, InputStream> readyToExportFiles) throws Exception 
     {
 		List<String> individuals1 = MgdbDao.getIndividualsFromSamples(sModule, samples1).stream().map(ind -> ind.getId()).collect(Collectors.toList());	
 		List<String> individuals2 = MgdbDao.getIndividualsFromSamples(sModule, samples2).stream().map(ind -> ind.getId()).collect(Collectors.toList());
@@ -118,8 +120,7 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
         File warningFile = File.createTempFile("export_warnings_", "");
         FileWriter warningFileWriter = new FileWriter(warningFile);
 
-        int markerCount = markerCursor.count();
-
+		long markerCount = varColl.countDocuments(varQuery);
         String exportName = sModule + "__" + markerCount + "variants__" + sortedIndividuals.size() + "individuals";
         zos.putNextEntry(new ZipEntry(exportName + ".gff3"));
         String header = "##gff-version 3" + LINE_SEPARATOR;
@@ -269,14 +270,15 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 			}
 		};        
         
-    	Number avgObjSize = (Number) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
+		Number avgObjSize = (Number) mongoTemplate.getDb().runCommand(new Document("collStats", mongoTemplate.getCollectionName(VariantRunData.class))).get("avgObjSize");
 		int nQueryChunkSize = (int) Math.max(1, (nMaxChunkSizeInMb*1024*1024 / avgObjSize.doubleValue()) / AsyncExportTool.WRITING_QUEUE_CAPACITY);
-		AsyncExportTool syncExportTool = new AsyncExportTool(markerCursor, markerCount, nQueryChunkSize, mongoTemplate, samplesToExport, dataOutputHandler, progress);
-		syncExportTool.launch();
-
-		while (progress.getCurrentStepProgress() < 100 && !progress.isAborted())
-			Thread.sleep(500);
-		
+		try (MongoCursor<Document> markerCursor = varColl.find(varQuery).projection(projectionDoc).sort(sortDoc).noCursorTimeout(true).collation(collationObj).batchSize(nQueryChunkSize).iterator()) {
+			AsyncExportTool syncExportTool = new AsyncExportTool(markerCursor, markerCount, nQueryChunkSize, mongoTemplate, samplesToExport, dataOutputHandler, progress);
+			syncExportTool.launch();
+	
+			while (progress.getCurrentStepProgress() < 100 && !progress.isAborted())
+				Thread.sleep(500);
+		}		
         zos.closeEntry();
         
         if (unassignedMarkers.size() > 0)

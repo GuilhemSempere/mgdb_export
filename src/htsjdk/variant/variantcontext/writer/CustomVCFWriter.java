@@ -673,4 +673,6 @@ public class CustomVCFWriter extends IndexingVariantContextWriter {
 	public void setHeader(VCFHeader header) {
 		this.mHeader = header;
 	}
+	
+	
 }

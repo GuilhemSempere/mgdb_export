@@ -34,12 +34,13 @@ import java.util.zip.ZipOutputStream;
 
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.log4j.Logger;
+import org.bson.Document;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 
-import com.mongodb.DBCursor;
-import com.mongodb.DBObject;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
 
 import fr.cirad.mgdb.model.mongo.maintypes.GenotypingProject;
 import fr.cirad.mgdb.model.mongo.maintypes.Individual;
@@ -91,7 +92,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 	 * @see fr.cirad.mgdb.exporting.individualoriented.AbstractIndividualOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.Collection, boolean, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, java.util.Map)
      */
     @Override
-    public void exportData(OutputStream outputStream, String sModule, Collection<File> individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, DBCursor markerCursor, Map<String, String> markerSynonyms, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, Collection<File> individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, MongoCollection<Document> varColl, Document varQuery, Map<String, String> markerSynonyms, Map<String, InputStream> readyToExportFiles) throws Exception {
         MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         GenotypingProject aProject = mongoTemplate.findOne(new Query(Criteria.where(GenotypingProject.FIELDNAME_PLOIDY_LEVEL).exists(true)), GenotypingProject.class);
         if (aProject == null) {
@@ -102,8 +103,6 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 
         File warningFile = File.createTempFile("export_warnings_", "");
         FileWriter warningFileWriter = new FileWriter(warningFile);
-
-        int markerCount = markerCursor.count();
 
         ZipOutputStream zos = new ZipOutputStream(outputStream);
 
@@ -121,6 +120,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
             }
         }
 
+		long markerCount = varColl.countDocuments(varQuery);
         String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.size() + "individuals";
 
         StringBuffer donFileContents = new StringBuffer();
@@ -134,29 +134,27 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
         zos.putNextEntry(new ZipEntry(exportName + ".var"));
         zos.write(("@DARwin 5.0 - ALLELIC - " + ploidy + LINE_SEPARATOR + individualExportFiles.size() + "\t" + markerCount * ploidy + LINE_SEPARATOR + "N°").getBytes());
 
-        DBCursor markerCursorCopy = markerCursor.copy();	// dunno how expensive this is, but seems safer than keeping all IDs in memory at any time
-
         short nProgress = 0, nPreviousProgress = 0;
-    	Number avgObjSize = (Number) mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantRunData.class)).getStats().get("avgObjSize");
-    	int nChunkSize = (int) (nMaxChunkSizeInMb * 1024 * 1024 / avgObjSize.doubleValue());
-        markerCursorCopy.batchSize(nChunkSize);
+        Number avgObjSize = (Number) mongoTemplate.getDb().runCommand(new Document("collStats", mongoTemplate.getCollectionName(VariantRunData.class))).get("avgObjSize");
+    	int nQueryChunkSize = (int) (nMaxChunkSizeInMb * 1024 * 1024 / avgObjSize.doubleValue());
 
         int nMarkerIndex = 0;
-        while (markerCursorCopy.hasNext()) {
-            DBObject exportVariant = markerCursorCopy.next();
-            String markerId = (String) exportVariant.get("_id");
-
-            if (markerSynonyms != null) {
-                String syn = markerSynonyms.get(markerId);
-                if (syn != null) {
-                    markerId = syn;
-                }
-            }
-            for (int j = 0; j < ploidy; j++) {
-                zos.write(("\t" + markerId).getBytes());
-            }
+		try (MongoCursor<Document> markerCursor = varColl.find(varQuery).projection(projectionDoc).sort(sortDoc).noCursorTimeout(true).collation(collationObj).batchSize(nQueryChunkSize).iterator()) {
+			while (markerCursor.hasNext()) {
+	            Document exportVariant = markerCursor.next();
+	            String markerId = (String) exportVariant.get("_id");
+	
+	            if (markerSynonyms != null) {
+	                String syn = markerSynonyms.get(markerId);
+	                if (syn != null) {
+	                    markerId = syn;
+	                }
+	            }
+	            for (int j = 0; j < ploidy; j++) {
+	                zos.write(("\t" + markerId).getBytes());
+	            }
+			}
         }
-        markerCursorCopy.close();
 
         List<String> indInfoHeaders = new ArrayList<>();
         TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = new TreeMap<Integer, Comparable>();
@@ -270,25 +268,24 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 
         // now read variant names for those that induced warnings
         nMarkerIndex = 0;
-        markerCursor.batchSize(nChunkSize);
-        while (markerCursor.hasNext()) {
-            DBObject exportVariant = markerCursor.next();
-            if (problematicMarkerIndexToNameMap.containsKey(nMarkerIndex)) {
-                Comparable markerId = (Comparable) exportVariant.get("_id");
-
-                if (markerSynonyms != null) {
-                    Comparable syn = markerSynonyms.get(markerId);
-                    if (syn != null) {
-                        markerId = syn;
-                    }
-                }
-                for (int j = 0; j < ploidy; j++) {
-                    zos.write(("\t" + markerId).getBytes());
-                }
-
-                problematicMarkerIndexToNameMap.put(nMarkerIndex, markerId);
-            }
-        }
+		try (MongoCursor<Document> markerCursor = varColl.find(varQuery).projection(projectionDoc).sort(sortDoc).noCursorTimeout(true).collation(collationObj).batchSize(nQueryChunkSize).iterator()) {
+	        while (markerCursor.hasNext()) {
+	            Document exportVariant = markerCursor.next();
+	            if (problematicMarkerIndexToNameMap.containsKey(nMarkerIndex)) {
+	                Comparable markerId = (Comparable) exportVariant.get("_id");
+	
+	                if (markerSynonyms != null) {
+	                    Comparable syn = markerSynonyms.get(markerId);
+	                    if (syn != null)
+	                        markerId = syn;
+	                }
+	                for (int j = 0; j < ploidy; j++)
+	                    zos.write(("\t" + markerId).getBytes());
+	
+	                problematicMarkerIndexToNameMap.put(nMarkerIndex, markerId);
+	            }
+	        }
+		}
 
         warningFileWriter.close();
         if (warningFile.length() > 0) {
