@@ -43,6 +43,7 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 
+import fr.cirad.mgdb.exporting.IExportHandler;
 import fr.cirad.mgdb.exporting.tools.AsyncExportTool;
 import fr.cirad.mgdb.exporting.tools.AsyncExportTool.AbstractDataOutputHandler;
 import fr.cirad.mgdb.model.mongo.maintypes.GenotypingSample;
@@ -256,7 +257,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 	
 		Number avgObjSize = (Number) mongoTemplate.getDb().runCommand(new Document("collStats", mongoTemplate.getCollectionName(VariantRunData.class))).get("avgObjSize");
 		int nQueryChunkSize = (int) Math.max(1, (nMaxChunkSizeInMb*1024*1024 / avgObjSize.doubleValue()) / AsyncExportTool.WRITING_QUEUE_CAPACITY);
-		try (MongoCursor<Document> markerCursor = varColl.find(varQuery).projection(projectionDoc).sort(sortDoc).noCursorTimeout(true).collation(collationObj).batchSize(nQueryChunkSize).iterator()) {
+		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nQueryChunkSize)) {
 			AsyncExportTool syncExportTool = new AsyncExportTool(markerCursor, markerCount, nQueryChunkSize, mongoTemplate, samplesToExport, dataOutputHandler, progress);
 			syncExportTool.launch();
 	

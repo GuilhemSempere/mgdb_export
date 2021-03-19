@@ -16,6 +16,7 @@
  *******************************************************************************/
 package fr.cirad.mgdb.exporting.individualoriented;
 
+import fr.cirad.mgdb.exporting.IExportHandler;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
 import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
@@ -223,7 +224,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
         ArrayList<Comparable> unassignedMarkers = new ArrayList<>();
         Number avgObjSize = (Number) mongoTemplate.getDb().runCommand(new Document("collStats", mongoTemplate.getCollectionName(VariantRunData.class))).get("avgObjSize");
 		int nQueryChunkSize = (int) (nMaxChunkSizeInMb * 1024 * 1024 / avgObjSize.doubleValue());
-		try (MongoCursor<Document> markerCursor = varColl.find(varQuery).projection(projectionDoc).sort(sortDoc).noCursorTimeout(true).collation(collationObj).batchSize(nQueryChunkSize).iterator()) {
+		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nQueryChunkSize)) {
 	        while (markerCursor.hasNext()) {
 	            Document exportVariant = markerCursor.next();
 	            Document refPos = (Document) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION);

@@ -33,6 +33,7 @@ import org.bson.Document;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 
+import fr.cirad.mgdb.exporting.IExportHandler;
 import fr.cirad.mgdb.model.mongo.maintypes.GenotypingSample;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
 import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
@@ -103,7 +104,7 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 		
 		short nProgress = 0, nPreviousProgress = 0;	
 		int nQueryChunkSize = (int) Math.min(2000, markerCount), nLoadedMarkerCount = 0;
-		try (MongoCursor<Document> markerCursor = varColl.find(varQuery).projection(projectionDoc).sort(sortDoc).noCursorTimeout(true).collation(collationObj).batchSize(nQueryChunkSize).iterator()) {
+		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nQueryChunkSize)) {
 			while (markerCursor.hasNext())
 			{
 				int nLoadedMarkerCountInLoop = 0;

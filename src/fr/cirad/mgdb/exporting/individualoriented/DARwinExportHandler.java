@@ -42,6 +42,7 @@ import org.springframework.data.mongodb.core.query.Query;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 
+import fr.cirad.mgdb.exporting.IExportHandler;
 import fr.cirad.mgdb.model.mongo.maintypes.GenotypingProject;
 import fr.cirad.mgdb.model.mongo.maintypes.Individual;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
@@ -139,7 +140,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
     	int nQueryChunkSize = (int) (nMaxChunkSizeInMb * 1024 * 1024 / avgObjSize.doubleValue());
 
         int nMarkerIndex = 0;
-		try (MongoCursor<Document> markerCursor = varColl.find(varQuery).projection(projectionDoc).sort(sortDoc).noCursorTimeout(true).collation(collationObj).batchSize(nQueryChunkSize).iterator()) {
+        try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nQueryChunkSize)) {
 			while (markerCursor.hasNext()) {
 	            Document exportVariant = markerCursor.next();
 	            String markerId = (String) exportVariant.get("_id");
@@ -268,7 +269,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 
         // now read variant names for those that induced warnings
         nMarkerIndex = 0;
-		try (MongoCursor<Document> markerCursor = varColl.find(varQuery).projection(projectionDoc).sort(sortDoc).noCursorTimeout(true).collation(collationObj).batchSize(nQueryChunkSize).iterator()) {
+        try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nQueryChunkSize)) {
 	        while (markerCursor.hasNext()) {
 	            Document exportVariant = markerCursor.next();
 	            if (problematicMarkerIndexToNameMap.containsKey(nMarkerIndex)) {
