@@ -17,6 +17,7 @@
 package fr.cirad.mgdb.exporting.individualoriented;
 
 import fr.cirad.mgdb.exporting.IExportHandler;
+import fr.cirad.mgdb.exporting.tools.ExportManager;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
 import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
@@ -103,28 +104,12 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	 * @see fr.cirad.mgdb.exporting.individualoriented.AbstractIndividualOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.Collection, boolean, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, java.util.Map)
      */
     @Override
-    public void exportData(OutputStream outputStream, String sModule, Collection<File> individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, MongoCollection<Document> varColl, Document varQuery, Map<String, String> markerSynonyms, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, Collection<File> individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Map<String, InputStream> readyToExportFiles) throws Exception {
+		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         File warningFile = File.createTempFile("export_warnings_", "");
         FileWriter warningFileWriter = new FileWriter(warningFile);
-
-        ZipOutputStream zos = new ZipOutputStream(outputStream);
-
-        if (readyToExportFiles != null) {
-            for (String readyToExportFile : readyToExportFiles.keySet()) {
-                zos.putNextEntry(new ZipEntry(readyToExportFile));
-                InputStream inputStream = readyToExportFiles.get(readyToExportFile);
-                byte[] dataBlock = new byte[1024];
-                int count = inputStream.read(dataBlock, 0, 1024);
-                while (count != -1) {
-                    zos.write(dataBlock, 0, count);
-                    count = inputStream.read(dataBlock, 0, 1024);
-                }
-                zos.closeEntry();
-            }
-        }
-
-        MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
-		long markerCount = varColl.countDocuments(varQuery);
+        ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
+		MongoCollection collWithPojoCodec = mongoTemplate.getDb().withCodecRegistry(ExportManager.pojoCodecRegistry).getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantRunData.class));
         String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.size() + "individuals";
         zos.putNextEntry(new ZipEntry(exportName + ".ped"));
 
@@ -149,13 +134,12 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	                int nMarkerIndex = 0;
 	                while ((line = in.readLine()) != null) {
 	                    List<String> genotypes = Helper.split(line, "|");
-	                    HashMap<Object, Integer> genotypeCounts = new HashMap<Object, Integer>();	// will help us to keep track of missing genotypes
+	                    HashMap<Object, Integer> genotypeCounts = new HashMap<>();	// will help us to keep track of missing genotypes
 	                    int highestGenotypeCount = 0;
 	                    String mostFrequentGenotype = null;
 	                    for (String genotype : genotypes) {
-	                        if (genotype.length() == 0) {
+	                        if (genotype.length() == 0)
 	                            continue;	/* skip missing genotypes */
-	                        }
 	
 	                        int gtCount = 1 + Helper.getCountForKey(genotypeCounts, genotype);
 	                        if (gtCount > highestGenotypeCount) {
@@ -222,9 +206,8 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 
         int nMarkerIndex = 0;
         ArrayList<Comparable> unassignedMarkers = new ArrayList<>();
-        Number avgObjSize = (Number) mongoTemplate.getDb().runCommand(new Document("collStats", mongoTemplate.getCollectionName(VariantRunData.class))).get("avgObjSize");
-		int nQueryChunkSize = (int) (nMaxChunkSizeInMb * 1024 * 1024 / avgObjSize.doubleValue());
-		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nQueryChunkSize)) {
+        int nQueryChunkSize = IExportHandler.computeQueryChunkSize(mongoTemplate, markerCount);
+		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(mongoTemplate.getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class)), varQuery, nQueryChunkSize)) {
 	        while (markerCursor.hasNext()) {
 	            Document exportVariant = markerCursor.next();
 	            Document refPos = (Document) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION);

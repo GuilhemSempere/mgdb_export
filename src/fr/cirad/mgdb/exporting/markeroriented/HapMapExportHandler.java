@@ -20,14 +20,13 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -41,16 +40,15 @@ import org.bson.Document;
 import org.springframework.data.mongodb.core.MongoTemplate;
 
 import com.mongodb.client.MongoCollection;
-import com.mongodb.client.MongoCursor;
 
+import fr.cirad.mgdb.exporting.AbstractExportWritingThread;
 import fr.cirad.mgdb.exporting.IExportHandler;
-import fr.cirad.mgdb.exporting.tools.AsyncExportTool;
-import fr.cirad.mgdb.exporting.tools.AsyncExportTool.AbstractDataOutputHandler;
+import fr.cirad.mgdb.exporting.tools.ExportManager;
 import fr.cirad.mgdb.model.mongo.maintypes.GenotypingSample;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
+import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
 import fr.cirad.mgdb.model.mongo.subtypes.SampleGenotype;
-import fr.cirad.mgdb.model.mongodao.MgdbDao;
 import fr.cirad.tools.AlphaNumericComparator;
 import fr.cirad.tools.Helper;
 import fr.cirad.tools.ProgressIndicator;
@@ -107,37 +105,18 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 	public String getExportArchiveExtension() {
 		return "zip";
 	}
-
+	
     @Override
-    public void exportData(OutputStream outputStream, String sModule, Collection<GenotypingSample> samples1, Collection<GenotypingSample> samples2, ProgressIndicator progress, MongoCollection<Document> varColl, Document varQuery, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
-        
-		List<String> individuals1 = MgdbDao.getIndividualsFromSamples(sModule, samples1).stream().map(ind -> ind.getId()).collect(Collectors.toList());	
-		List<String> individuals2 = MgdbDao.getIndividualsFromSamples(sModule, samples2).stream().map(ind -> ind.getId()).collect(Collectors.toList());
-
+    public void exportData(OutputStream outputStream, String sModule, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
 		List<String> sortedIndividuals = samplesToExport.stream().map(gs -> gs.getIndividual()).distinct().sorted(new AlphaNumericComparator<String>()).collect(Collectors.toList());
 		
 		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         File warningFile = File.createTempFile("export_warnings_", "");
         FileWriter warningFileWriter = new FileWriter(warningFile);
-
-        ZipOutputStream zos = new ZipOutputStream(outputStream);
-
-        if (readyToExportFiles != null) {
-            for (String readyToExportFile : readyToExportFiles.keySet()) {
-                zos.putNextEntry(new ZipEntry(readyToExportFile));
-                InputStream inputStream = readyToExportFiles.get(readyToExportFile);
-                byte[] dataBlock = new byte[1024];
-                int count = inputStream.read(dataBlock, 0, 1024);
-                while (count != -1) {
-                    zos.write(dataBlock, 0, count);
-                    count = inputStream.read(dataBlock, 0, 1024);
-                }
-                zos.closeEntry();
-            }
-        }
-
-		long markerCount = varColl.countDocuments(varQuery);
+        ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
+		MongoCollection collWithPojoCodec = mongoTemplate.getDb().withCodecRegistry(ExportManager.pojoCodecRegistry).getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantRunData.class));
         String exportName = sModule + "__" + markerCount + "variants__" + sortedIndividuals.size() + "individuals";
+
         zos.putNextEntry(new ZipEntry(exportName + ".hapmap"));
         String header = "rs#" + "\t" + "alleles" + "\t" + "chrom" + "\t" + "pos" + "\t" + "strand" + "\t" + "assembly#" + "\t" + "center" + "\t" + "protLSID" + "\t" + "assayLSID" + "\t" + "panelLSID" + "\t" + "QCcode";
         zos.write(header.getBytes());
@@ -148,48 +127,54 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 		final Map<Integer, String> sampleIdToIndividualMap = new HashMap<>();
 		for (GenotypingSample gs : samplesToExport)
 			sampleIdToIndividualMap.put(gs.getId(), gs.getIndividual());
-		
-		AbstractDataOutputHandler<Integer, LinkedHashMap<VariantData, Collection<VariantRunData>>> dataOutputHandler = new AbstractDataOutputHandler<Integer, LinkedHashMap<VariantData, Collection<VariantRunData>>>() {				
-			@Override
-			public Void call() {
-				StringBuffer sb = new StringBuffer();
-				for (VariantData variant : variantDataChunkMap.keySet())
+
+		int nQueryChunkSize = IExportHandler.computeQueryChunkSize(mongoTemplate, markerCount);	
+		AbstractExportWritingThread writingThread = new AbstractExportWritingThread() {
+			public void run() {				
+                HashMap<Object, Integer> genotypeCounts = new HashMap<Object, Integer>();	// will help us to keep track of missing genotypes
+				for (String idOfVarToWrite : markerRunsToWrite.keySet()) {
+					if (progress.isAborted() || progress.getError() != null)
+						return;
+
+					List<VariantRunData> runsToWrite = markerRunsToWrite.get(idOfVarToWrite);
+					if (runsToWrite.isEmpty())
+						continue;
+
+					StringBuffer sb = new StringBuffer();
 					try
 					{
-						String variantId = variant.getId();
 		                if (markerSynonyms != null) {
-		                	String syn = markerSynonyms.get(variantId);
-		                    if (syn != null) {
-		                        variantId = syn;
-		                    }
+		                	String syn = markerSynonyms.get(idOfVarToWrite);
+		                    if (syn != null)
+		                    	idOfVarToWrite = syn;
 		                }
+
+		                VariantRunData vrd = runsToWrite.get(0);
+		                boolean fIsSNP = vrd.getType().equals(Type.SNP.toString());
+
+		                ReferencePosition rp = vrd.getReferencePosition();
+		                sb.append(/*(variantId == null ? variant.getId() : */idOfVarToWrite/*)*/ + "\t" + StringUtils.join((vrd).getKnownAlleleList(), "/") + "\t" + (rp == null ? 0 : rp.getSequence()) + "\t" + (rp == null ? 0 : rp.getStartSite()) + "\t" + "+\tNA\tNA\tNA\tNA\tNA\tNA");
 	
-		                boolean fIsSNP = variant.getType().equals(Type.SNP.toString());
-	
-		                sb.append((variantId == null ? variant.getId() : variantId) + "\t" + StringUtils.join(variant.getKnownAlleleList(), "/") + "\t" + (variant.getReferencePosition() == null ? 0 : variant.getReferencePosition().getSequence()) + "\t" + (variant.getReferencePosition() == null ? 0 : variant.getReferencePosition().getStartSite()) + "\t" + "+\tNA\tNA\tNA\tNA\tNA\tNA");
-	
-		                Map<String, List<String>> individualGenotypes = new TreeMap<String, List<String>>(new AlphaNumericComparator<String>());
-		                Collection<VariantRunData> runs = variantDataChunkMap.get(variant);
-		                if (runs != null) {
-		                    for (VariantRunData run : runs) {
-								for (Integer sampleId : run.getSampleGenotypes().keySet()) {
-									SampleGenotype sampleGenotype = run.getSampleGenotypes().get(sampleId);
-									String individualId = sampleIdToIndividualMap.get(sampleId);
-		                            
-									if (!VariantData.gtPassesVcfAnnotationFilters(individualId, sampleGenotype, individuals1, annotationFieldThresholds, individuals2, annotationFieldThresholds2))
-										continue;	// skip genotype
-									
-		                            String gtCode = sampleGenotype.getCode();
-		                            List<String> storedIndividualGenotypes = individualGenotypes.get(individualId);
-		                            if (storedIndividualGenotypes == null) {
-		                                storedIndividualGenotypes = new ArrayList<String>();
-		                                individualGenotypes.put(individualId, storedIndividualGenotypes);
-		                            }
-		                            storedIndividualGenotypes.add(gtCode);
-		                        }
-		                    }
-		                }
-	
+		                Map<String, LinkedHashSet<String>> individualGenotypes = new TreeMap<String, LinkedHashSet<String>>(new AlphaNumericComparator<String>());
+
+	                	for (VariantRunData run : runsToWrite) {
+	                    	for (Integer sampleId : run.getSampleGenotypes().keySet()) {
+								SampleGenotype sampleGenotype = run.getSampleGenotypes().get(sampleId);
+	                            String gtCode = sampleGenotype.getCode();
+	                            String individualId = sampleIdToIndividualMap.get(sampleId);
+	                            
+								if (gtCode == null || !VariantData.gtPassesVcfAnnotationFilters(individualId, sampleGenotype, individuals1, annotationFieldThresholds, individuals2, annotationFieldThresholds2))
+									continue;	// skip genotype
+								
+	                            LinkedHashSet<String> storedIndividualGenotypes = individualGenotypes.get(individualId);
+	                            if (storedIndividualGenotypes == null) {
+	                                storedIndividualGenotypes = new LinkedHashSet<String>();
+	                                individualGenotypes.put(individualId, storedIndividualGenotypes);
+	                            }
+	                            storedIndividualGenotypes.add(gtCode);
+	                        }
+	                    }
+
 		                int writtenGenotypeCount = 0;
 		                for (String individual : individualGenotypes.keySet() /* we use this list because it has the proper ordering */) {
 		                    int individualIndex = sortedIndividuals.indexOf(individual);
@@ -198,8 +183,8 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 		                        writtenGenotypeCount++;
 		                    }
 	
-		                    List<String> genotypes = individualGenotypes.get(individual);
-		                    HashMap<Object, Integer> genotypeCounts = new HashMap<Object, Integer>();	// will help us to keep track of missing genotypes
+		                    LinkedHashSet<String> genotypes = individualGenotypes.get(individual);
+		                    genotypeCounts.clear();
 		                    int highestGenotypeCount = 0;
 		                    String mostFrequentGenotype = null;
 		                    if (genotypes != null) {
@@ -216,13 +201,12 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 		                        }
 		                    }
 	
-		                    String exportedGT = mostFrequentGenotype == null ? missingGenotype : ("\t" + StringUtils.join(variant.getAllelesFromGenotypeCode(mostFrequentGenotype), fIsSNP ? "" : "/"));
+		                    String exportedGT = ("\t" + StringUtils.join(vrd.safelyGetAllelesFromGenotypeCode(mostFrequentGenotype, mongoTemplate), fIsSNP ? "" : "/"));
 		                    sb.append(exportedGT);
 		                    writtenGenotypeCount++;
 	
-		                    if (genotypeCounts.size() > 1) {
-		                        warningFileWriter.write("- Dissimilar genotypes found for variant " + (variantId == null ? variant.getId() : variantId) + ", individual " + individual + ". Exporting most frequent: " + new String(exportedGT) + "\n");
-		                    }
+		                    if (genotypeCounts.size() > 1)
+		                        warningFileWriter.write("- Dissimilar genotypes found for variant " + /*(variantId == null ? variant.getId() : */idOfVarToWrite/*)*/ + ", individual " + individual + ". Exporting most frequent: " + new String(exportedGT) + "\n");
 		                }
 	
 		                while (writtenGenotypeCount < sortedIndividuals.size()) {
@@ -230,43 +214,23 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 		                    writtenGenotypeCount++;
 		                }
 		                sb.append(LINE_SEPARATOR);
-	
-			            if (progress.isAborted()) {
-			                warningFileWriter.close();
-			                return null;
-			            }
+			            zos.write(sb.toString().getBytes());
 	                }
 					catch (Exception e)
 					{
 						if (progress.getError() == null)	// only log this once
-							LOG.debug("Unable to export " + variant.getId(), e);
-						progress.setError("Unable to export " + variant.getId() + ": " + e.getMessage());
+							LOG.debug("Unable to export " + idOfVarToWrite, e);
+						progress.setError("Unable to export " + idOfVarToWrite + ": " + e.getMessage());
 					}
-				
-                try
-                {
-    				zos.write(sb.toString().getBytes());
 				}
-                catch (IOException ioe)
-                {
-                	progress.setError("Unable to export data for " + variantDataChunkMap.keySet() + ": " + ioe.getMessage());
-                }
-				return null;
+				markerRunsToWrite.clear();
 			}
 		};
-	
-		Number avgObjSize = (Number) mongoTemplate.getDb().runCommand(new Document("collStats", mongoTemplate.getCollectionName(VariantRunData.class))).get("avgObjSize");
-		int nQueryChunkSize = (int) Math.max(1, (nMaxChunkSizeInMb*1024*1024 / avgObjSize.doubleValue()) / AsyncExportTool.WRITING_QUEUE_CAPACITY);
-		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nQueryChunkSize)) {
-			AsyncExportTool syncExportTool = new AsyncExportTool(markerCursor, markerCount, nQueryChunkSize, mongoTemplate, samplesToExport, dataOutputHandler, progress);
-			syncExportTool.launch();
-	
-			while (progress.getCurrentStepProgress() < 100 && !progress.isAborted())
-				Thread.sleep(500);
-		}
-		
-        zos.closeEntry();
 
+		ExportManager exportManager = new ExportManager(mongoTemplate, collWithPojoCodec, VariantRunData.class, varQuery, samplesToExport, true, nQueryChunkSize, writingThread, markerCount, warningFileWriter, progress);
+		exportManager.readAndWrite();
+        zos.closeEntry();
+        
         warningFileWriter.close();
         if (warningFile.length() > 0) {
             zos.putNextEntry(new ZipEntry(exportName + "-REMARKS.txt"));

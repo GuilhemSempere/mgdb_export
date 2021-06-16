@@ -45,6 +45,7 @@ import com.mongodb.client.MongoCursor;
 import fr.cirad.mgdb.exporting.IExportHandler;
 import fr.cirad.mgdb.model.mongo.maintypes.GenotypingProject;
 import fr.cirad.mgdb.model.mongo.maintypes.Individual;
+import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
 import fr.cirad.tools.Helper;
 import fr.cirad.tools.ProgressIndicator;
@@ -93,7 +94,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 	 * @see fr.cirad.mgdb.exporting.individualoriented.AbstractIndividualOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.Collection, boolean, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, java.util.Map)
      */
     @Override
-    public void exportData(OutputStream outputStream, String sModule, Collection<File> individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, MongoCollection<Document> varColl, Document varQuery, Map<String, String> markerSynonyms, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, Collection<File> individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Map<String, InputStream> readyToExportFiles) throws Exception {
         MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         GenotypingProject aProject = mongoTemplate.findOne(new Query(Criteria.where(GenotypingProject.FIELDNAME_PLOIDY_LEVEL).exists(true)), GenotypingProject.class);
         if (aProject == null) {
@@ -105,23 +106,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
         File warningFile = File.createTempFile("export_warnings_", "");
         FileWriter warningFileWriter = new FileWriter(warningFile);
 
-        ZipOutputStream zos = new ZipOutputStream(outputStream);
-
-        if (readyToExportFiles != null) {
-            for (String readyToExportFile : readyToExportFiles.keySet()) {
-                zos.putNextEntry(new ZipEntry(readyToExportFile));
-                InputStream inputStream = readyToExportFiles.get(readyToExportFile);
-                byte[] dataBlock = new byte[1024];
-                int count = inputStream.read(dataBlock, 0, 1024);
-                while (count != -1) {
-                    zos.write(dataBlock, 0, count);
-                    count = inputStream.read(dataBlock, 0, 1024);
-                }
-                zos.closeEntry();
-            }
-        }
-
-		long markerCount = varColl.countDocuments(varQuery);
+        ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
         String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.size() + "individuals";
 
         StringBuffer donFileContents = new StringBuffer();
@@ -136,12 +121,12 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
         zos.write(("@DARwin 5.0 - ALLELIC - " + ploidy + LINE_SEPARATOR + individualExportFiles.size() + "\t" + markerCount * ploidy + LINE_SEPARATOR + "N°").getBytes());
 
         short nProgress = 0, nPreviousProgress = 0;
-        Number avgObjSize = (Number) mongoTemplate.getDb().runCommand(new Document("collStats", mongoTemplate.getCollectionName(VariantRunData.class))).get("avgObjSize");
-    	int nQueryChunkSize = (int) (nMaxChunkSizeInMb * 1024 * 1024 / avgObjSize.doubleValue());
+        MongoCollection<Document> varColl = mongoTemplate.getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class));
 
         int nMarkerIndex = 0;
-        try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nQueryChunkSize)) {
-			while (markerCursor.hasNext()) {
+        int nQueryChunkSize = IExportHandler.computeQueryChunkSize(mongoTemplate, markerCount);
+		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nQueryChunkSize)) {
+	        while (markerCursor.hasNext()) {
 	            Document exportVariant = markerCursor.next();
 	            String markerId = (String) exportVariant.get("_id");
 	
@@ -242,7 +227,6 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 
                 nProgress = (short) (++i * 100 / individualExportFiles.size());
                 if (nProgress > nPreviousProgress) {
-                    //				LOG.debug("============= doDARwinExport (" + i + "): " + nProgress + "% =============");
                     progress.setCurrentStepProgress(nProgress);
                     nPreviousProgress = nProgress;
                 }
@@ -269,7 +253,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 
         // now read variant names for those that induced warnings
         nMarkerIndex = 0;
-        try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nQueryChunkSize)) {
+		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nQueryChunkSize)) {
 	        while (markerCursor.hasNext()) {
 	            Document exportVariant = markerCursor.next();
 	            if (problematicMarkerIndexToNameMap.containsKey(nMarkerIndex)) {

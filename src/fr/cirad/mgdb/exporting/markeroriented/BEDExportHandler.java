@@ -29,15 +29,19 @@ import java.util.zip.ZipOutputStream;
 
 import org.apache.log4j.Logger;
 import org.bson.Document;
+import org.springframework.data.mongodb.core.MongoTemplate;
 
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 
 import fr.cirad.mgdb.exporting.IExportHandler;
+import fr.cirad.mgdb.exporting.tools.ExportManager;
 import fr.cirad.mgdb.model.mongo.maintypes.GenotypingSample;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
+import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
 import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
 import fr.cirad.tools.ProgressIndicator;
+import fr.cirad.tools.mongo.MongoTemplateManager;
 
 /**
  * The Class BEDExportHandler.
@@ -77,34 +81,17 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 		return Arrays.asList(new String[] {"Exporting data to BED format"});
 	}
 
-	/* (non-Javadoc)
-	 * @see fr.cirad.mgdb.exporting.markeroriented.AbstractMarkerOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.List, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, int, int, java.util.Map)
-	 */
 	@Override
-	public void exportData(OutputStream outputStream, String sModule, Collection<GenotypingSample> samples1, Collection<GenotypingSample> samples2, ProgressIndicator progress, MongoCollection<Document> varColl, Document varQuery, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
-		ZipOutputStream zos = new ZipOutputStream(outputStream);
-		
-		if (readyToExportFiles != null)
-			for (String readyToExportFile : readyToExportFiles.keySet())
-			{
-				zos.putNextEntry(new ZipEntry(readyToExportFile));			
-				InputStream inputStream = readyToExportFiles.get(readyToExportFile);
-				byte[] dataBlock = new byte[1024];
-				int count = inputStream.read(dataBlock, 0, 1024);
-				while (count != -1) {
-					zos.write(dataBlock, 0, count);
-				    count = inputStream.read(dataBlock, 0, 1024);
-				}
-				zos.closeEntry();
-			}
+    public void exportData(OutputStream outputStream, String sModule, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
+        ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
 
-		long markerCount = varColl.countDocuments(varQuery);
 		String exportName = sModule + "__" + markerCount + "variants";
 		zos.putNextEntry(new ZipEntry(exportName + ".bed"));
 		
-		short nProgress = 0, nPreviousProgress = 0;	
+		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
+		short nProgress = 0, nPreviousProgress = 0;
 		int nQueryChunkSize = (int) Math.min(2000, markerCount), nLoadedMarkerCount = 0;
-		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nQueryChunkSize)) {
+		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(mongoTemplate.getDb().withCodecRegistry(ExportManager.pojoCodecRegistry).getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class)), varQuery, nQueryChunkSize)) {
 			while (markerCursor.hasNext())
 			{
 				int nLoadedMarkerCountInLoop = 0;
