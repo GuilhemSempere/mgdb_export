@@ -31,11 +31,11 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -104,109 +104,23 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	 * @see fr.cirad.mgdb.exporting.individualoriented.AbstractIndividualOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.Collection, boolean, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, java.util.Map)
      */
     @Override
-    public void exportData(OutputStream outputStream, String sModule, Collection<File> individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Map<String, InputStream> readyToExportFiles) throws Exception {
 		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         File warningFile = File.createTempFile("export_warnings_", "");
         FileWriter warningFileWriter = new FileWriter(warningFile);
         ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
 		MongoCollection collWithPojoCodec = mongoTemplate.getDb().withCodecRegistry(ExportManager.pojoCodecRegistry).getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantRunData.class));
-        String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.size() + "individuals";
-        zos.putNextEntry(new ZipEntry(exportName + ".ped"));
+        String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.length + "individuals";
+        int nQueryChunkSize = IExportHandler.computeQueryChunkSize(mongoTemplate, markerCount);
 
-        TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = new TreeMap<Integer, Comparable>();
-        short nProgress = 0, nPreviousProgress = 0;
-        int i = 0;
-        try
-        {
-	        for (File f : individualExportFiles) {
-	            BufferedReader in = new BufferedReader(new FileReader(f));
-	            try {
-	                String individualId, line = in.readLine();	// read sample id
-	                if (line != null) {
-	                    individualId = line;
-	                    String population = MgdbDao.getIndividualPopulation(sModule, line);
-	                    String individualInfo = (population == null ? "." : population) + " " + individualId;
-	                    zos.write((individualInfo + " 0 0 0 " + getIndividualGenderCode(sModule, individualId)).getBytes());
-	                } else {
-	                    throw new Exception("Unable to read first line of temp export file " + f.getName());
-	                }
-	
-	                int nMarkerIndex = 0;
-	                while ((line = in.readLine()) != null) {
-	                    List<String> genotypes = Helper.split(line, "|");
-	                    HashMap<Object, Integer> genotypeCounts = new HashMap<>();	// will help us to keep track of missing genotypes
-	                    int highestGenotypeCount = 0;
-	                    String mostFrequentGenotype = null;
-	                    for (String genotype : genotypes) {
-	                        if (genotype.length() == 0)
-	                            continue;	/* skip missing genotypes */
-	
-	                        int gtCount = 1 + Helper.getCountForKey(genotypeCounts, genotype);
-	                        if (gtCount > highestGenotypeCount) {
-	                            highestGenotypeCount = gtCount;
-	                            mostFrequentGenotype = genotype;
-	                        }
-	                        genotypeCounts.put(genotype, gtCount);
-	                    }
-	
-	                    if (genotypeCounts.size() > 1) {
-	                        warningFileWriter.write("- Dissimilar genotypes found for variant " + nMarkerIndex + ", individual " + individualId + ". Exporting most frequent: " + mostFrequentGenotype + "\n");
-	                        problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
-	                    }
-	
-	                    String[] alleles = mostFrequentGenotype == null ? new String[0] : mostFrequentGenotype.split(" ");
-	                    if (alleles.length > 2) {
-	                        warningFileWriter.write("- More than 2 alleles found for variant " + nMarkerIndex + ", individual " + individualId + ". Exporting only the first 2 alleles.\n");
-	                        problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
-	                    }
-	
-	                    String all1 = alleles.length == 0 ? "0" : alleles[0];
-	                    String all2 = alleles.length == 0 ? "0" : alleles[alleles.length == 1 ? 0 : 1];
-	                    if (all1.length() != 1 || all2.length() != 1) {
-	                        warningFileWriter.write("- SNP expected, but alleles are not coded on a single char for variant " + nMarkerIndex + ", individual " + individualId + ". Ignoring this genotype.\n");
-	                        problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
-	                    } else {
-	                        zos.write((" " + all1 + " " + all2).getBytes());
-	                    }
-	
-	                    nMarkerIndex++;
-	                }
-	            } catch (Exception e) {
-	                LOG.error("Error exporting data", e);
-	                progress.setError("Error exporting data: " + e.getClass().getSimpleName() + (e.getMessage() != null ? " - " + e.getMessage() : ""));
-	                return;
-	            } finally {
-	                in.close();               
-	            }
-	
-	            if (progress.isAborted()) {
-	                return;
-	            }
-	
-	            nProgress = (short) (++i * 100 / individualExportFiles.size());
-	            if (nProgress > nPreviousProgress) {
-	                progress.setCurrentStepProgress(nProgress);
-	                nPreviousProgress = nProgress;
-	            }
-	            zos.write('\n');
-	        }
-        }
-        finally
-        {
-        	for (File f : individualExportFiles)
-                if (!f.delete()) {
-                    f.deleteOnExit();
-                    LOG.info("Unable to delete tmp export file " + f.getAbsolutePath());
-                }
-        	zos.closeEntry();
-        }
-        warningFileWriter.close();
+        zos.putNextEntry(new ZipEntry(exportName + ".ped"));
+        TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = writeGenotypeFile(zos, sModule, nQueryChunkSize, null, varQuery, markerSynonyms, individualExportFiles, warningFileWriter, progress);
+    	zos.closeEntry();
 
         zos.putNextEntry(new ZipEntry(exportName + ".map"));
 
         int nMarkerIndex = 0;
         ArrayList<Comparable> unassignedMarkers = new ArrayList<>();
-        int nQueryChunkSize = IExportHandler.computeQueryChunkSize(mongoTemplate, markerCount);
 		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(mongoTemplate.getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class)), varQuery, nQueryChunkSize)) {
 	        while (markerCursor.hasNext()) {
 	            Document exportVariant = markerCursor.next();
@@ -257,6 +171,102 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
         zos.finish();
         zos.close();
         progress.setCurrentStepProgress((short) 100);
+    }
+    
+    public TreeMap<Integer, Comparable> writeGenotypeFile(OutputStream os, String sModule, int nQueryChunkSize, MongoCollection<Document> varColl, Document varQuery, Map<String, String> markerSynonyms, File[] individualExportFiles, FileWriter warningFileWriter, ProgressIndicator progress) throws IOException {
+        TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = new TreeMap<Integer, Comparable>();
+        short nProgress = 0, nPreviousProgress = 0;
+        int i = 0;
+        try
+        {
+	        for (File f : individualExportFiles) {
+	            BufferedReader in = new BufferedReader(new FileReader(f));
+	            try {
+	                String individualId, line = in.readLine();	// read sample id
+	                if (line != null) {
+	                    individualId = line;
+	                    String population = MgdbDao.getIndividualPopulation(sModule, line);
+	                    String individualInfo = (population == null ? "." : population) + " " + individualId;
+	                    os.write((individualInfo + " 0 0 0 " + getIndividualGenderCode(sModule, individualId)).getBytes());
+	                } else {
+	                    throw new Exception("Unable to read first line of temp export file " + f.getName());
+	                }
+	
+	                int nMarkerIndex = 0;
+	                while ((line = in.readLine()) != null) {
+	                    List<String> genotypes = Helper.split(line, "|");
+	                    HashMap<Object, Integer> genotypeCounts = new HashMap<>();	// will help us to keep track of missing genotypes
+	                    int highestGenotypeCount = 0;
+	                    String mostFrequentGenotype = null;
+	                    for (String genotype : genotypes) {
+	                        if (genotype.length() == 0)
+	                            continue;	/* skip missing genotypes */
+	
+	                        int gtCount = 1 + Helper.getCountForKey(genotypeCounts, genotype);
+	                        if (gtCount > highestGenotypeCount) {
+	                            highestGenotypeCount = gtCount;
+	                            mostFrequentGenotype = genotype;
+	                        }
+	                        genotypeCounts.put(genotype, gtCount);
+	                    }
+	
+	                    if (genotypeCounts.size() > 1) {
+	                    	if (warningFileWriter != null)
+	                    		warningFileWriter.write("- Dissimilar genotypes found for variant " + nMarkerIndex + ", individual " + individualId + ". Exporting most frequent: " + mostFrequentGenotype + "\n");
+	                        problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
+	                    }
+	
+	                    String[] alleles = mostFrequentGenotype == null ? new String[0] : mostFrequentGenotype.split(" ");
+	                    if (alleles.length > 2) {
+	                    	if (warningFileWriter != null)
+	                    		warningFileWriter.write("- More than 2 alleles found for variant " + nMarkerIndex + ", individual " + individualId + ". Exporting only the first 2 alleles.\n");
+	                        problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
+	                    }
+	
+	                    String all1 = alleles.length == 0 ? "0" : alleles[0];
+	                    String all2 = alleles.length == 0 ? "0" : alleles[alleles.length == 1 ? 0 : 1];
+	                    if (all1.length() != 1 || all2.length() != 1) {
+	                    	if (warningFileWriter != null)
+	                    		warningFileWriter.write("- SNP expected, but alleles are not coded on a single char for variant " + nMarkerIndex + ", individual " + individualId + ". Ignoring this genotype.\n");
+	                        problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
+	                    } else {
+	                        os.write((" " + all1 + " " + all2).getBytes());
+	                    }
+	
+	                    nMarkerIndex++;
+	                }
+	            } catch (Exception e) {
+	                LOG.error("Error exporting data", e);
+	                progress.setError("Error exporting data: " + e.getClass().getSimpleName() + (e.getMessage() != null ? " - " + e.getMessage() : ""));
+	                return null;
+	            } finally {
+	                in.close();               
+	            }
+	
+	            if (progress.isAborted()) {
+	                return null;
+	            }
+	
+	            nProgress = (short) (++i * 100 / individualExportFiles.length);
+	            if (nProgress > nPreviousProgress) {
+	                progress.setCurrentStepProgress(nProgress);
+	                nPreviousProgress = nProgress;
+	            }
+	            os.write('\n');
+	        }
+        }
+        finally
+        {
+        	for (File f : individualExportFiles)
+                if (!f.delete()) {
+                    f.deleteOnExit();
+                    LOG.info("Unable to delete tmp export file " + f.getAbsolutePath());
+                }
+        }
+    	if (warningFileWriter != null)
+    		warningFileWriter.close();
+    	
+        return problematicMarkerIndexToNameMap;
     }
 
     /* (non-Javadoc)

@@ -16,16 +16,6 @@
  *******************************************************************************/
 package fr.cirad.mgdb.exporting.individualoriented;
 
-import fr.cirad.mgdb.exporting.IExportHandler;
-import fr.cirad.mgdb.model.mongo.maintypes.Individual;
-import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
-import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
-import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData.VariantRunDataId;
-import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
-import fr.cirad.tools.Helper;
-import fr.cirad.tools.ProgressIndicator;
-import fr.cirad.tools.mongo.MongoTemplateManager;
-
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -35,7 +25,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,6 +39,16 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
+
+import fr.cirad.mgdb.exporting.IExportHandler;
+import fr.cirad.mgdb.model.mongo.maintypes.Individual;
+import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
+import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
+import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData.VariantRunDataId;
+import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
+import fr.cirad.tools.Helper;
+import fr.cirad.tools.ProgressIndicator;
+import fr.cirad.tools.mongo.MongoTemplateManager;
 
 /**
  * The Class FlapjackExportHandler.
@@ -86,14 +85,14 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
 	 * @see fr.cirad.mgdb.exporting.individualoriented.AbstractIndividualOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.Collection, boolean, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, java.util.Map)
      */
     @Override
-    public void exportData(OutputStream outputStream, String sModule, Collection<File> individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Map<String, InputStream> readyToExportFiles) throws Exception {
         File warningFile = File.createTempFile("export_warnings_", "");
         FileWriter warningFileWriter = new FileWriter(warningFile);
 
         ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
         MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         
-        String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.size() + "individuals";
+        String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.length + "individuals";
         int nQueryChunkSize = IExportHandler.computeQueryChunkSize(mongoTemplate, markerCount);
         MongoCollection<Document> varColl = mongoTemplate.getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class));
 
@@ -158,7 +157,7 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
         progress.setCurrentStepProgress((short) 100);
     }
 
-    public TreeMap<Integer, Comparable> writeGenotypeFile(OutputStream os, String sModule, int nQueryChunkSize, MongoCollection<Document> varColl, Document varQuery, Map<String, String> markerSynonyms, Collection<File> individualExportFiles, FileWriter warningFileWriter, ProgressIndicator progress) throws IOException {
+    public TreeMap<Integer, Comparable> writeGenotypeFile(OutputStream os, String sModule, int nQueryChunkSize, MongoCollection<Document> varColl, Document varQuery, Map<String, String> markerSynonyms, File[] individualExportFiles, FileWriter warningFileWriter, ProgressIndicator progress) throws IOException {
    		os.write(("# fjFile = GENOTYPE" + LINE_SEPARATOR).getBytes());
         
    		boolean fWorkingOnRuns = varColl.getNamespace().getCollectionName().equals(MongoTemplateManager.getMongoCollectionName(VariantRunData.class));
@@ -171,7 +170,7 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
 	        }
 		}
 		catch (IOException ioe) {
-			LOG.error("Error occurred while writing Flapjack genotype file. Deleting " + individualExportFiles.size() + " temporary individual-oriented files.", ioe);
+			LOG.error("Error occurred while writing Flapjack genotype file. Deleting " + individualExportFiles.length + " temporary individual-oriented files.", ioe);
 			for (File f : individualExportFiles)
 				f.delete();
 		}
@@ -248,7 +247,7 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
 	                return null;
 	            }
 	
-	            nProgress = (short) (++i * 100 / individualExportFiles.size());
+	            nProgress = (short) (++i * 100 / individualExportFiles.length);
 	            if (nProgress > nPreviousProgress) {
 	                progress.setCurrentStepProgress(nProgress);
 	                nPreviousProgress = nProgress;

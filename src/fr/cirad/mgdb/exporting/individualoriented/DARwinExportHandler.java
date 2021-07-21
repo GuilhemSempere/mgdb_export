@@ -46,7 +46,6 @@ import fr.cirad.mgdb.exporting.IExportHandler;
 import fr.cirad.mgdb.model.mongo.maintypes.GenotypingProject;
 import fr.cirad.mgdb.model.mongo.maintypes.Individual;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
-import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
 import fr.cirad.tools.Helper;
 import fr.cirad.tools.ProgressIndicator;
 import fr.cirad.tools.mongo.MongoTemplateManager;
@@ -94,7 +93,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 	 * @see fr.cirad.mgdb.exporting.individualoriented.AbstractIndividualOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.Collection, boolean, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, java.util.Map)
      */
     @Override
-    public void exportData(OutputStream outputStream, String sModule, Collection<File> individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Map<String, InputStream> readyToExportFiles) throws Exception {
         MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         GenotypingProject aProject = mongoTemplate.findOne(new Query(Criteria.where(GenotypingProject.FIELDNAME_PLOIDY_LEVEL).exists(true)), GenotypingProject.class);
         if (aProject == null) {
@@ -107,7 +106,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
         FileWriter warningFileWriter = new FileWriter(warningFile);
 
         ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
-        String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.size() + "individuals";
+        String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.length + "individuals";
 
         StringBuffer donFileContents = new StringBuffer();
 
@@ -118,7 +117,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
         }
 
         zos.putNextEntry(new ZipEntry(exportName + ".var"));
-        zos.write(("@DARwin 5.0 - ALLELIC - " + ploidy + LINE_SEPARATOR + individualExportFiles.size() + "\t" + markerCount * ploidy + LINE_SEPARATOR + "N°").getBytes());
+        zos.write(("@DARwin 5.0 - ALLELIC - " + ploidy + LINE_SEPARATOR + individualExportFiles.length + "\t" + markerCount * ploidy + LINE_SEPARATOR + "N°").getBytes());
 
         short nProgress = 0, nPreviousProgress = 0;
         MongoCollection<Document> varColl = mongoTemplate.getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class));
@@ -225,7 +224,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
                     return;
                 }
 
-                nProgress = (short) (++i * 100 / individualExportFiles.size());
+                nProgress = (short) (++i * 100 / individualExportFiles.length);
                 if (nProgress > nPreviousProgress) {
                     progress.setCurrentStepProgress(nProgress);
                     nPreviousProgress = nProgress;
@@ -245,7 +244,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 
         zos.putNextEntry(new ZipEntry(exportName + ".don"));
         
-        String donFileHeader = "@DARwin 5.0 - DON -" + LINE_SEPARATOR + individualExportFiles.size() + "\t" + (1 + indInfoHeaders.size()) + LINE_SEPARATOR + "N°" + "\t" + "individual";
+        String donFileHeader = "@DARwin 5.0 - DON -" + LINE_SEPARATOR + individualExportFiles.length + "\t" + (1 + indInfoHeaders.size()) + LINE_SEPARATOR + "N°" + "\t" + "individual";
         for (String header : indInfoHeaders)
         	donFileHeader += "\t" + header;
         zos.write((donFileHeader + LINE_SEPARATOR).getBytes());
