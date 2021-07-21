@@ -27,11 +27,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.NoSuchElementException;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
@@ -94,12 +94,14 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
         ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
 		MongoCollection collWithPojoCodec = mongoTemplate.getDb().withCodecRegistry(ExportManager.pojoCodecRegistry).getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantRunData.class));
 
-		List<String> sortedIndividuals = samplesToExport.stream().map(gs -> gs.getIndividual()).distinct().sorted(new AlphaNumericComparator<String>()).collect(Collectors.toList());
+		Map<String, Integer> individualPositions = new LinkedHashMap<>();
+		for (String ind : samplesToExport.stream().map(gs -> gs.getIndividual()).distinct().sorted(new AlphaNumericComparator<String>()).collect(Collectors.toList()))
+			individualPositions.put(ind, individualPositions.size());
 
 		File warningFile = File.createTempFile("export_warnings_", "");
         FileWriter warningFileWriter = new FileWriter(warningFile);
 
-        String exportName = sModule + "__" + markerCount + "variants__" + sortedIndividuals.size() + "individuals";
+        String exportName = sModule + "__" + markerCount + "variants__" + individualPositions.size() + "individuals";
         zos.putNextEntry(new ZipEntry(exportName + ".gff3"));
         String header = "##gff-version 3" + LINE_SEPARATOR;
         zos.write(header.getBytes());
@@ -144,8 +146,7 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 		                }
 
 		                VariantRunData vrd = runsToWrite.get(0);	
-		                Map<String, LinkedHashSet<String>> individualGenotypes = new TreeMap<String, LinkedHashSet<String>>(new AlphaNumericComparator<String>());
-
+		                LinkedHashSet<String>[] individualGenotypes = new LinkedHashSet[individualPositions.size()];
 	                	for (VariantRunData run : runsToWrite) {
 	                    	for (Integer sampleId : run.getSampleGenotypes().keySet()) {
 								SampleGenotype sampleGenotype = run.getSampleGenotypes().get(sampleId);
@@ -155,12 +156,10 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 								if (gtCode == null || !VariantData.gtPassesVcfAnnotationFilters(individualId, sampleGenotype, individuals1, annotationFieldThresholds, individuals2, annotationFieldThresholds2))
 									continue;	// skip genotype
 								
-	                            LinkedHashSet<String> storedIndividualGenotypes = individualGenotypes.get(individualId);
-	                            if (storedIndividualGenotypes == null) {
-	                                storedIndividualGenotypes = new LinkedHashSet<String>();
-	                                individualGenotypes.put(individualId, storedIndividualGenotypes);
-	                            }
-	                            storedIndividualGenotypes.add(gtCode);
+								int individualIndex = individualPositions.get(individualId);
+								if (individualGenotypes[individualIndex] == null)
+									individualGenotypes[individualIndex] = new LinkedHashSet<String>();
+								individualGenotypes[individualIndex].add(gtCode);
 	                        }
 	                    }
 
@@ -180,42 +179,42 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 		                Comparable syn = markerSynonyms == null ? null : markerSynonyms.get(vrd.getId());
 		                sb.append("ID=" + idOfVarToWrite + ";" + (syn != null ? "Name=" + syn + ";" : "") + "alleles=" + StringUtils.join(vrd.getKnownAlleleList(), "/") + ";" + "refallele=" + refAllele + ";");
 
-		                for (String individualId : individualGenotypes.keySet() /* we use this object because it has the proper ordering*/) {
+	            		HashMap<String, List<String>> genotypeStringCache = new HashMap<>();
+		                for (String individual : individualPositions.keySet() /* we use this list because it has the proper ordering */) {
+		                    int individualIndex = individualPositions.get(individual);
 		                    NumberFormat nf = NumberFormat.getInstance(Locale.US);
 		                    nf.setMaximumFractionDigits(4);
-		                    HashMap<String, Integer> compt1 = new HashMap<>();
+		                    HashMap<String, Integer> compt = new HashMap<>();
 		                    int highestGenotypeCount = 0;
 		                    int sum = 0;
 
-		                    LinkedHashSet<String> genotypes = individualGenotypes.get(individualId);
 		                    HashMap<Object, Integer> genotypeCounts = new HashMap<>(); // will help us to keep track of missing genotypes
 
 		                    String mostFrequentGenotype = null;
-		                    if (genotypes != null) {
-		                        for (String genotype : genotypes) {
-		                            if (genotype == null) {
+		                    if (individualGenotypes[individualIndex] != null) {
+		                        for (String genotype : individualGenotypes[individualIndex]) {
+		                            if (genotype == null)
 		                                continue; /* skip missing genotypes */
-		                            }
 
 		                            int count = 0;
-		                            for (String t : vrd.safelyGetAllelesFromGenotypeCode(genotype, mongoTemplate)) {
-		                                for (String t1 : vrd.getKnownAlleleList()) {
-		                                    if (t.equals(t1) && !(compt1.containsKey(t1))) {
+		                            for (String allele : getAllelesFromGenotypeCodeUsingCache(genotype, genotypeStringCache, vrd, mongoTemplate)) {
+		                                for (String ka : vrd.getKnownAlleleList()) {
+		                                    if (allele.equals(ka) && !(compt.containsKey(ka))) {
 		                                        count++;
-		                                        compt1.put(t1, count);
-		                                    } else if (t.equals(t1) && compt1.containsKey(t1)) {
-		                                        if (compt1.get(t1) != 0) {
+		                                        compt.put(ka, count);
+		                                    } else if (allele.equals(ka) && compt.containsKey(ka)) {
+		                                        if (compt.get(ka) != 0) {
 		                                            count++;
-		                                            compt1.put(t1, count);
+		                                            compt.put(ka, count);
 		                                        } else {
-		                                            compt1.put(t1, count);
+		                                            compt.put(ka, count);
 		                                        }
-		                                    } else if (!(compt1.containsKey(t1))) {
-		                                        compt1.put(t1, 0);
+		                                    } else if (!(compt.containsKey(ka))) {
+		                                        compt.put(ka, 0);
 		                                    }
 		                                }
 		                            }
-		                            for (int countValue : compt1.values()) {
+		                            for (int countValue : compt.values()) {
 		                                sum += countValue;
 		                            }
 
@@ -228,19 +227,18 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 		                        }
 		                    }
 
-		                    List<String> alleles = mostFrequentGenotype == null ? new ArrayList<>() : vrd.getAllelesFromGenotypeCode(mostFrequentGenotype);
-
+		        			List<String> alleles = getAllelesFromGenotypeCodeUsingCache(mostFrequentGenotype, genotypeStringCache, vrd, mongoTemplate);
 		                    if (!alleles.isEmpty()) {
-		                        sb.append("acounts=" + individualId + ":");
+		                        sb.append("acounts=" + individual + ":");
 
-		                        for (String knowAllelesCompt : compt1.keySet()) {
-		                            sb.append(knowAllelesCompt + " " + nf.format(compt1.get(knowAllelesCompt) / (float) sum) + " " + compt1.get(knowAllelesCompt) + " ");
+		                        for (String knowAllelesCompt : compt.keySet()) {
+		                            sb.append(knowAllelesCompt + " " + nf.format(compt.get(knowAllelesCompt) / (float) sum) + " " + compt.get(knowAllelesCompt) + " ");
 		                        }
 		                        sb.append(alleles.size() + ";");
 		                    }
 		                    if (genotypeCounts.size() > 1) {
 		                        String sVariantId = markerSynonyms != null ? markerSynonyms.get(idOfVarToWrite) : idOfVarToWrite;
-		                        warningFileWriter.write("- Dissimilar genotypes found for variant " + (sVariantId == null ? vrd.getId() : sVariantId) + ", individual " + individualId + ". Exporting most frequent: " + StringUtils.join(alleles, ",") + "\n");
+		                        warningFileWriter.write("- Dissimilar genotypes found for variant " + (sVariantId == null ? vrd.getId() : sVariantId) + ", individual " + individual + ". Exporting most frequent: " + StringUtils.join(alleles, ",") + "\n");
 		                    }
 		                }
 		                sb.append(LINE_SEPARATOR);
@@ -285,7 +283,15 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
         progress.setCurrentStepProgress((short) 100);
     }
 
-
+	private List<String> getAllelesFromGenotypeCodeUsingCache(String gtCode, HashMap<String, List<String>> genotypeStringCache, VariantRunData vrd, MongoTemplate mongoTemplate) {
+		List<String> alleles = genotypeStringCache.get(gtCode);
+        if (alleles == null) {
+        	alleles = vrd.safelyGetAllelesFromGenotypeCode(gtCode, mongoTemplate);
+        	genotypeStringCache.put(gtCode, alleles);
+        }
+        return alleles;
+	}
+	
     /* (non-Javadoc)
  * @see fr.cirad.mgdb.exporting.IExportHandler#getStepList()
      */

@@ -26,10 +26,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -108,19 +108,21 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 	
     @Override
     public void exportData(OutputStream outputStream, String sModule, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
-		List<String> sortedIndividuals = samplesToExport.stream().map(gs -> gs.getIndividual()).distinct().sorted(new AlphaNumericComparator<String>()).collect(Collectors.toList());
+		Map<String, Integer> individualPositions = new LinkedHashMap<>();
+		for (String ind : samplesToExport.stream().map(gs -> gs.getIndividual()).distinct().sorted(new AlphaNumericComparator<String>()).collect(Collectors.toList()))
+			individualPositions.put(ind, individualPositions.size());
 		
 		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         File warningFile = File.createTempFile("export_warnings_", "");
         FileWriter warningFileWriter = new FileWriter(warningFile);
         ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
 		MongoCollection collWithPojoCodec = mongoTemplate.getDb().withCodecRegistry(ExportManager.pojoCodecRegistry).getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantRunData.class));
-        String exportName = sModule + "__" + markerCount + "variants__" + sortedIndividuals.size() + "individuals";
+        String exportName = sModule + "__" + markerCount + "variants__" + individualPositions.size() + "individuals";
 
         zos.putNextEntry(new ZipEntry(exportName + ".hapmap"));
         String header = "rs#" + "\t" + "alleles" + "\t" + "chrom" + "\t" + "pos" + "\t" + "strand" + "\t" + "assembly#" + "\t" + "center" + "\t" + "protLSID" + "\t" + "assayLSID" + "\t" + "panelLSID" + "\t" + "QCcode";
         zos.write(header.getBytes());
-        for (String individual : sortedIndividuals)
+        for (String individual : individualPositions.keySet())
             zos.write(("\t" + individual).getBytes());
         zos.write((LINE_SEPARATOR).getBytes());
 
@@ -155,7 +157,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 		                ReferencePosition rp = vrd.getReferencePosition();
 		                sb.append(/*(variantId == null ? variant.getId() : */idOfVarToWrite/*)*/ + "\t" + StringUtils.join((vrd).getKnownAlleleList(), "/") + "\t" + (rp == null ? 0 : rp.getSequence()) + "\t" + (rp == null ? 0 : rp.getStartSite()) + "\t" + "+\tNA\tNA\tNA\tNA\tNA\tNA");
 	
-		                Map<String, LinkedHashSet<String>> individualGenotypes = new TreeMap<String, LinkedHashSet<String>>(new AlphaNumericComparator<String>());
+		                LinkedHashSet<String>[] individualGenotypes = new LinkedHashSet[individualPositions.size()];
 
 	                	for (VariantRunData run : runsToWrite) {
 	                    	for (Integer sampleId : run.getSampleGenotypes().keySet()) {
@@ -166,29 +168,28 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 								if (gtCode == null || !VariantData.gtPassesVcfAnnotationFilters(individualId, sampleGenotype, individuals1, annotationFieldThresholds, individuals2, annotationFieldThresholds2))
 									continue;	// skip genotype
 								
-	                            LinkedHashSet<String> storedIndividualGenotypes = individualGenotypes.get(individualId);
-	                            if (storedIndividualGenotypes == null) {
-	                                storedIndividualGenotypes = new LinkedHashSet<String>();
-	                                individualGenotypes.put(individualId, storedIndividualGenotypes);
-	                            }
-	                            storedIndividualGenotypes.add(gtCode);
+								int individualIndex = individualPositions.get(individualId);
+								if (individualGenotypes[individualIndex] == null)
+									individualGenotypes[individualIndex] = new LinkedHashSet<String>();
+								individualGenotypes[individualIndex].add(gtCode);
 	                        }
 	                    }
 
 		                int writtenGenotypeCount = 0;
-		                for (String individual : individualGenotypes.keySet() /* we use this list because it has the proper ordering */) {
-		                    int individualIndex = sortedIndividuals.indexOf(individual);
+		                
+		                HashMap<String, String> genotypeStringCache = new HashMap<>();
+		                for (String individual : individualPositions.keySet() /* we use this list because it has the proper ordering */) {
+		                    int individualIndex = individualPositions.get(individual);
 		                    while (writtenGenotypeCount < individualIndex) {
 		                        sb.append(missingGenotype);
 		                        writtenGenotypeCount++;
 		                    }
-	
-		                    LinkedHashSet<String> genotypes = individualGenotypes.get(individual);
+
 		                    genotypeCounts.clear();
 		                    int highestGenotypeCount = 0;
 		                    String mostFrequentGenotype = null;
-		                    if (genotypes != null) {
-		                        for (String genotype : genotypes) {
+		                    if (individualGenotypes[individualIndex] != null) {
+		                        for (String genotype : individualGenotypes[individualIndex]) {
 		                            if (genotype == null)
 		                                continue;	/* skip missing genotypes */
 	
@@ -201,7 +202,11 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 		                        }
 		                    }
 	
-		                    String exportedGT = ("\t" + StringUtils.join(vrd.safelyGetAllelesFromGenotypeCode(mostFrequentGenotype, mongoTemplate), fIsSNP ? "" : "/"));
+		                    String exportedGT = genotypeStringCache.get(mostFrequentGenotype);
+		                    if (exportedGT == null) {
+		                    	exportedGT = mostFrequentGenotype == null ? missingGenotype : ("\t" + StringUtils.join(vrd.safelyGetAllelesFromGenotypeCode(mostFrequentGenotype, mongoTemplate), fIsSNP ? "" : "/"));
+		                    	genotypeStringCache.put(mostFrequentGenotype, exportedGT);
+		                    }
 		                    sb.append(exportedGT);
 		                    writtenGenotypeCount++;
 	
@@ -209,7 +214,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 		                        warningFileWriter.write("- Dissimilar genotypes found for variant " + /*(variantId == null ? variant.getId() : */idOfVarToWrite/*)*/ + ", individual " + individual + ". Exporting most frequent: " + new String(exportedGT) + "\n");
 		                }
 	
-		                while (writtenGenotypeCount < sortedIndividuals.size()) {
+		                while (writtenGenotypeCount < individualPositions.size()) {
 		                    sb.append(missingGenotype);
 		                    writtenGenotypeCount++;
 		                }

@@ -26,10 +26,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -55,6 +55,7 @@ import fr.cirad.tools.AlphaNumericComparator;
 import fr.cirad.tools.Helper;
 import fr.cirad.tools.ProgressIndicator;
 import fr.cirad.tools.mongo.MongoTemplateManager;
+
 import htsjdk.variant.variantcontext.VariantContext.Type;
 
 /**
@@ -159,9 +160,11 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
             ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
     		MongoCollection collWithPojoCodec = mongoTemplate.getDb().withCodecRegistry(ExportManager.pojoCodecRegistry).getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantRunData.class));
 
-    		List<String> sortedIndividuals = samplesToExport.stream().map(gs -> gs.getIndividual()).distinct().sorted(new AlphaNumericComparator<String>()).collect(Collectors.toList());
+    		Map<String, Integer> individualPositions = new LinkedHashMap<>();
+    		for (String ind : samplesToExport.stream().map(gs -> gs.getIndividual()).distinct().sorted(new AlphaNumericComparator<String>()).collect(Collectors.toList()))
+    			individualPositions.put(ind, individualPositions.size());
  
-            String exportName = sModule + "__" + markerCount + "variants__" + sortedIndividuals.size() + "individuals";
+            String exportName = sModule + "__" + markerCount + "variants__" + individualPositions.size() + "individuals";
             
             zos.putNextEntry(new ZipEntry(exportName + ".eigenstratgeno"));
 
@@ -200,14 +203,10 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
     		                }
 
     		                VariantRunData vrd = runsToWrite.get(0);
-//    		                boolean fIsSNP = vrd.getType().equals(Type.SNP.toString());
-
     		                ReferencePosition rp = vrd.getReferencePosition();
-    	                    snpFileWriter.write(idOfVarToWrite + "\t" + (rp == null ? 0 : rp.getSequence()) + "\t" + 0 + "\t" + (rp == null ? 0 : rp.getStartSite()) + LINE_SEPARATOR);    		                
-//    		                sb.append(/*(variantId == null ? variant.getId() : */idOfVarToWrite/*)*/ + "\t" + StringUtils.join((vrd).getKnownAlleleList(), "/") + "\t" + (rp == null ? 0 : rp.getSequence()) + "\t" + (rp == null ? 0 : rp.getStartSite()) + "\t" + "+\tNA\tNA\tNA\tNA\tNA\tNA");
-    	
-    		                Map<String, LinkedHashSet<String>> individualGenotypes = new TreeMap<String, LinkedHashSet<String>>(new AlphaNumericComparator<String>());
+    	                    snpFileWriter.write(idOfVarToWrite + "\t" + (rp == null ? 0 : rp.getSequence()) + "\t" + 0 + "\t" + (rp == null ? 0 : rp.getStartSite()) + LINE_SEPARATOR);
 
+    		                LinkedHashSet<String>[] individualGenotypes = new LinkedHashSet[individualPositions.size()];
     	                	for (VariantRunData run : runsToWrite) {
     	                    	for (Integer sampleId : run.getSampleGenotypes().keySet()) {
     								SampleGenotype sampleGenotype = run.getSampleGenotypes().get(sampleId);
@@ -217,69 +216,63 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
     								if (gtCode == null || !VariantData.gtPassesVcfAnnotationFilters(individualId, sampleGenotype, individuals1, annotationFieldThresholds, individuals2, annotationFieldThresholds2))
     									continue;	// skip genotype
     								
-    	                            LinkedHashSet<String> storedIndividualGenotypes = individualGenotypes.get(individualId);
-    	                            if (storedIndividualGenotypes == null) {
-    	                                storedIndividualGenotypes = new LinkedHashSet<String>();
-    	                                individualGenotypes.put(individualId, storedIndividualGenotypes);
-    	                            }
-    	                            storedIndividualGenotypes.add(gtCode);
+    								int individualIndex = individualPositions.get(individualId);
+    								if (individualGenotypes[individualIndex] == null)
+    									individualGenotypes[individualIndex] = new LinkedHashSet<String>();
+    								individualGenotypes[individualIndex].add(gtCode);
     	                        }
     	                    }
 
     	                    boolean fFirstLoopExecution = true;
-    	                    if (individualGenotypes.isEmpty())
-    	                    {
-    	                    	for (int i=0; i<sortedIndividuals.size(); i++)
-    	                    		sb.append(missingData);
-    	                    	warningFileWriter.write("- No genotypes found for variant " + idOfVarToWrite + "\n");
-    	                    }
-    	                    else
-    		                    for (String individualId : sortedIndividuals /* we use this object because it has the proper ordering*/) {
-    		                        LinkedHashSet<String> genotypes = individualGenotypes.get(individualId);
-    		                        HashMap<Object, Integer> genotypeCounts = new HashMap<Object, Integer>(); // will help us to keep track of missing genotypes
-    		                        int highestGenotypeCount = 0;
-    		                        String mostFrequentGenotype = null;
-    		                        if (genotypes != null) {
-    		                            for (String genotype : genotypes) {
-    		                                if (genotype == null) {
-    		                                    continue; /* skip missing genotypes */
-    		                                }
-    		
-    		                                int gtCount = 1 + Helper.getCountForKey(genotypeCounts, genotype);
-    		                                if (gtCount > highestGenotypeCount) {
-    		                                    highestGenotypeCount = gtCount;
-    		                                    mostFrequentGenotype = genotype;
-    		                                }
-    		                                genotypeCounts.put(genotype, gtCount);
-    		                            }
-    		                        }
-    		
-    		                        List<String> alleles = vrd.safelyGetAllelesFromGenotypeCode(mostFrequentGenotype, mongoTemplate);
-    		                        int nOutputCode = 0;
-    		                        if (mostFrequentGenotype == null)
-    		                            nOutputCode = 9;
-    		                        else
-    		                            for (String all : Helper.split(mostFrequentGenotype, "/"))
-    		                                if ("0".equals(all))
-    		                                    nOutputCode++;
-    		
-    		                        if (fFirstLoopExecution && vrd.getKnownAlleleList().size() > 2) {
-    		                            warningFileWriter.write("- Variant " + vrd.getId() + " is multi-allelic. Make sure Eigenstrat genotype encoding specifications are suitable for you.\n");
-    		                        }
-    		                        sb.append(nOutputCode);
-    		
-    		                        if (genotypeCounts.size() > 1 || alleles.size() > 2) {
-    		                            if (genotypeCounts.size() > 1) {
-    		                                warningFileWriter.write("- Dissimilar genotypes found for variant " + idOfVarToWrite + ", individual " + individualId + ". Exporting most frequent: " + nOutputCode + "\n");
-    		                            }
-    		                            if (alleles.size() > 2) {
-    		                                warningFileWriter.write("- More than 2 alleles found for variant " + idOfVarToWrite + ", individual " + individualId + ". Exporting only the first 2 alleles.\n");
-    		                            }
-    		                        }
-    		                        fFirstLoopExecution = false;
-    		                    }
-    		                    sb.append(LINE_SEPARATOR);
-   		        				zos.write(sb.toString().getBytes());
+    		                for (String individual : individualPositions.keySet() /* we use this list because it has the proper ordering */) {
+    		                    int individualIndex = individualPositions.get(individual);
+		                        HashMap<Object, Integer> genotypeCounts = new HashMap<Object, Integer>(); // will help us to keep track of missing genotypes
+		                        int highestGenotypeCount = 0;
+		                        String mostFrequentGenotype = null;
+		                        if (individualGenotypes[individualIndex] != null) {
+		                            for (String genotype : individualGenotypes[individualIndex]) {
+		                                if (genotype == null) {
+		                                    continue; /* skip missing genotypes */
+		                                }
+		
+		                                int gtCount = 1 + Helper.getCountForKey(genotypeCounts, genotype);
+		                                if (gtCount > highestGenotypeCount) {
+		                                    highestGenotypeCount = gtCount;
+		                                    mostFrequentGenotype = genotype;
+		                                }
+		                                genotypeCounts.put(genotype, gtCount);
+		                            }
+		                        }
+		
+		                        long nAlleleCount = 0;
+		                        byte nOutputCode = 0;
+		                        if (mostFrequentGenotype == null)
+		                            nOutputCode = missingData;
+		                        else {
+		                            for (String all : Helper.split(mostFrequentGenotype, "/")) {
+		                            	nAlleleCount++;
+		                                if ("0".equals(all))
+		                                    nOutputCode++;
+		                            }
+		                        }
+		
+		                        if (fFirstLoopExecution && vrd.getKnownAlleleList().size() > 2) {
+		                            warningFileWriter.write("- Variant " + vrd.getId() + " is multi-allelic. Make sure Eigenstrat genotype encoding specifications are suitable for you.\n");
+		                        }
+		                        sb.append(nOutputCode);
+		
+		                        if (genotypeCounts.size() > 1 || nAlleleCount > 2) {
+		                            if (genotypeCounts.size() > 1) {
+		                                warningFileWriter.write("- Dissimilar genotypes found for variant " + idOfVarToWrite + ", individual " + individual + ". Exporting most frequent: " + nOutputCode + "\n");
+		                            }
+		                            if (nAlleleCount > 2) {
+		                                warningFileWriter.write("- More than 2 alleles found for variant " + idOfVarToWrite + ", individual " + individual + ". Exporting only the first 2 alleles.\n");
+		                            }
+		                        }
+		                        fFirstLoopExecution = false;
+		                    }
+		                    sb.append(LINE_SEPARATOR);
+	        				zos.write(sb.toString().getBytes());
     	                }
     					catch (Exception e)
     					{
@@ -302,8 +295,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
             	LOG.info("No chromosomal position found for " + unassignedMarkers.size() + " markers " + StringUtils.join(unassignedMarkers, ", "));
             
             StringBuffer indFileContents = new StringBuffer();
-            for (String individual : sortedIndividuals)
-            {
+            for (String individual : individualPositions.keySet()) {
             	String pop = MgdbDao.getIndividualPopulation(sModule, individual);
                 indFileContents.append(individual + "\t" + getIndividualGenderCode(sModule, individual) + "\t" + (pop == null ? "." : pop) + LINE_SEPARATOR);
             }
