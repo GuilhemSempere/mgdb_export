@@ -26,18 +26,21 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
 import java.util.TreeMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-import org.apache.commons.collections.CollectionUtils;
 import org.apache.log4j.Logger;
 import org.bson.Document;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
@@ -46,6 +49,7 @@ import fr.cirad.mgdb.exporting.IExportHandler;
 import fr.cirad.mgdb.model.mongo.maintypes.GenotypingProject;
 import fr.cirad.mgdb.model.mongo.maintypes.Individual;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
+import fr.cirad.mgdb.model.mongodao.MgdbDao;
 import fr.cirad.tools.Helper;
 import fr.cirad.tools.ProgressIndicator;
 import fr.cirad.tools.mongo.MongoTemplateManager;
@@ -93,7 +97,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 	 * @see fr.cirad.mgdb.exporting.individualoriented.AbstractIndividualOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.Collection, boolean, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, java.util.Map)
      */
     @Override
-    public void exportData(OutputStream outputStream, String sModule, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
         MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         GenotypingProject aProject = mongoTemplate.findOne(new Query(Criteria.where(GenotypingProject.FIELDNAME_PLOIDY_LEVEL).exists(true)), GenotypingProject.class);
         if (aProject == null) {
@@ -107,9 +111,8 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 
         ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
         String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.length + "individuals";
-
+        
         StringBuffer donFileContents = new StringBuffer();
-
         int count = 0;
         String missingGenotype = "";
         for (int j = 0; j < ploidy; j++) {
@@ -140,8 +143,16 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 	            }
 			}
         }
+		
+		Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    	String sCurrentUser = auth == null || "anonymousUser".equals(auth.getName()) ? "anonymousUser" : auth.getName();
+        ArrayList<String> exportedIndividuals = new ArrayList<>();
+        for (File indFile : individualExportFiles)
+        	try (Scanner scanner = new Scanner(indFile)) {
+        		exportedIndividuals.add(scanner.nextLine());
+        	}
+        LinkedHashMap<String, Individual> indMap = MgdbDao.loadIndividualsWithAllMetadata(sModule, sCurrentUser, null, exportedIndividuals);
 
-        List<String> indInfoHeaders = new ArrayList<>();
         TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = new TreeMap<Integer, Comparable>();
         ArrayList<String> distinctAlleles = new ArrayList<String>();	// the index of each allele will be used as its code
         int i = 0;
@@ -156,19 +167,9 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
                     else
                         throw new Exception("Unable to read first line of temp export file " + f.getName());
                     
-                    HashMap<String, Comparable> indInfo = mongoTemplate.findById(individualId, Individual.class).getAdditionalInfo();
-                    if (indInfoHeaders.size() == 0)
-                    	indInfoHeaders.addAll(indInfo.keySet());
-                    else
-                    {	// deal with fields we might have not yet encountered
-	                    Collection<String> newHeaders = CollectionUtils.subtract(indInfo.keySet(), indInfoHeaders);
-	                    if (newHeaders.size() > 0)
-	                    	indInfoHeaders.addAll(newHeaders);
-                    }
-                    	
                     donFileContents.append(++count + "\t" + individualId);
-                    for (String header : indInfoHeaders)
-                    	donFileContents.append("\t" + Helper.nullToEmptyString(indInfo.get(header)));
+                    for (String header : individualMetadataFieldsToExport)
+                    	donFileContents.append("\t" + Helper.nullToEmptyString(indMap.get(individualId).getAdditionalInfo().get(header)));
                     donFileContents.append(LINE_SEPARATOR);
 
                     zos.write((LINE_SEPARATOR + count).getBytes());
@@ -242,10 +243,9 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
         }
         zos.closeEntry();
 
-        zos.putNextEntry(new ZipEntry(exportName + ".don"));
-        
-        String donFileHeader = "@DARwin 5.0 - DON -" + LINE_SEPARATOR + individualExportFiles.length + "\t" + (1 + indInfoHeaders.size()) + LINE_SEPARATOR + "N°" + "\t" + "individual";
-        for (String header : indInfoHeaders)
+        zos.putNextEntry(new ZipEntry(exportName + ".don"));        
+        String donFileHeader = "@DARwin 5.0 - DON -" + LINE_SEPARATOR + individualExportFiles.length + "\t" + (1 + individualMetadataFieldsToExport.size()) + LINE_SEPARATOR + "N°" + "\t" + "individual";
+        for (String header : individualMetadataFieldsToExport)
         	donFileHeader += "\t" + header;
         zos.write((donFileHeader + LINE_SEPARATOR).getBytes());
         zos.write(donFileContents.toString().getBytes());
@@ -270,6 +270,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 	            }
 	        }
 		}
+		zos.closeEntry();
 
         warningFileWriter.close();
         if (warningFile.length() > 0) {

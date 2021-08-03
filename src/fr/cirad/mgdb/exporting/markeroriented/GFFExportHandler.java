@@ -80,7 +80,7 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
      */
     @Override
     public String getExportFormatDescription() {
-        return "Exports data in GFF3 Format based on Sequence Ontology. See <a target='_blank' href='http://rice.bio.indiana.edu:7082/annot/gff3.html'>http://rice.bio.indiana.edu:7082/annot/gff3.html</a> and <a target='_blank' href='http://www.sequenceontology.org/resources/gff3.html'>http://www.sequenceontology.org/resources/gff3.html</a>";
+        return "Exports data in GFF3 Format based on Sequence Ontology. See <a target='_blank' href='https://m.ensembl.org/info/website/upload/gff3.html'>https://m.ensembl.org/info/website/upload/gff3.html</a> and <a target='_blank' href='https://github.com/The-Sequence-Ontology/Specifications/blob/master/gff3.md'>https://github.com/The-Sequence-Ontology/Specifications/blob/master/gff3.md</a>";
     }
     
 	@Override
@@ -89,7 +89,7 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 	}
 
     @Override
-    public void exportData(OutputStream outputStream, String sModule, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Map<String, InputStream> readyToExportFiles) throws Exception { 
+    public void exportData(OutputStream outputStream, String sModule, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception { 
         MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
 		MongoCollection collWithPojoCodec = mongoTemplate.getDb().withCodecRegistry(ExportManager.pojoCodecRegistry).getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantRunData.class));
@@ -102,6 +102,14 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
         FileWriter warningFileWriter = new FileWriter(warningFile);
 
         String exportName = sModule + "__" + markerCount + "variants__" + individualPositions.size() + "individuals";
+        
+        if (individualMetadataFieldsToExport != null && !individualMetadataFieldsToExport.isEmpty()) {
+        	zos.putNextEntry(new ZipEntry(exportName + ".metadata.tsv"));
+        	zos.write("individual".getBytes());
+	        IExportHandler.writeMetadataFile(sModule, individualPositions.keySet(), individualMetadataFieldsToExport, zos);
+	    	zos.closeEntry();
+        }
+
         zos.putNextEntry(new ZipEntry(exportName + ".gff3"));
         String header = "##gff-version 3" + LINE_SEPARATOR;
         zos.write(header.getBytes());

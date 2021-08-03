@@ -25,9 +25,11 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
 import java.util.TreeMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -81,11 +83,8 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
 		return "fjzip";
 	}
 
-	/* (non-Javadoc)
-	 * @see fr.cirad.mgdb.exporting.individualoriented.AbstractIndividualOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.Collection, boolean, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, java.util.Map)
-     */
     @Override
-    public void exportData(OutputStream outputStream, String sModule, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
         File warningFile = File.createTempFile("export_warnings_", "");
         FileWriter warningFileWriter = new FileWriter(warningFile);
 
@@ -96,13 +95,24 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
         int nQueryChunkSize = IExportHandler.computeQueryChunkSize(mongoTemplate, markerCount);
         MongoCollection<Document> varColl = mongoTemplate.getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class));
 
+        if (individualMetadataFieldsToExport != null && !individualMetadataFieldsToExport.isEmpty()) {
+	        zos.putNextEntry(new ZipEntry(exportName + ".phenotype"));
+	        zos.write(("# fjFile = PHENOTYPE" + LINE_SEPARATOR).getBytes());
+	        ArrayList<String> exportedIndividuals = new ArrayList<>();
+	        for (File indFile : individualExportFiles)
+	        	try (Scanner scanner = new Scanner(indFile)) {
+	        		exportedIndividuals.add(scanner.nextLine());
+	        	}
+	        IExportHandler.writeMetadataFile(sModule, exportedIndividuals, individualMetadataFieldsToExport, zos);
+	    	zos.closeEntry();
+        }
+
         zos.putNextEntry(new ZipEntry(exportName + ".genotype"));
         TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = writeGenotypeFile(zos, sModule, nQueryChunkSize, varColl, varQuery, markerSynonyms, individualExportFiles, warningFileWriter, progress);
     	zos.closeEntry();
 
         zos.putNextEntry(new ZipEntry(exportName + ".map"));
         zos.write(("# fjFile = MAP" + LINE_SEPARATOR).getBytes());
-
         int nMarkerIndex = 0;
         ArrayList<String> unassignedMarkers = new ArrayList<>();
         try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nQueryChunkSize)) {

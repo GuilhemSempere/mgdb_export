@@ -36,9 +36,11 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
 import java.util.TreeMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -104,15 +106,27 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	 * @see fr.cirad.mgdb.exporting.individualoriented.AbstractIndividualOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.Collection, boolean, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, java.util.Map)
      */
     @Override
-    public void exportData(OutputStream outputStream, String sModule, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
 		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
+        int nQueryChunkSize = IExportHandler.computeQueryChunkSize(mongoTemplate, markerCount);
         File warningFile = File.createTempFile("export_warnings_", "");
         FileWriter warningFileWriter = new FileWriter(warningFile);
         ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
 		MongoCollection collWithPojoCodec = mongoTemplate.getDb().withCodecRegistry(ExportManager.pojoCodecRegistry).getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantRunData.class));
         String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.length + "individuals";
-        int nQueryChunkSize = IExportHandler.computeQueryChunkSize(mongoTemplate, markerCount);
-
+        
+        if (individualMetadataFieldsToExport != null && !individualMetadataFieldsToExport.isEmpty()) {
+        	zos.putNextEntry(new ZipEntry(exportName + ".metadata.tsv"));
+        	zos.write("individual".getBytes());
+	        ArrayList<String> exportedIndividuals = new ArrayList<>();
+	        for (File indFile : individualExportFiles)
+	        	try (Scanner scanner = new Scanner(indFile)) {
+	        		exportedIndividuals.add(scanner.nextLine());
+	        	}
+	        IExportHandler.writeMetadataFile(sModule, exportedIndividuals, individualMetadataFieldsToExport, zos);
+	    	zos.closeEntry();
+        }
+        
         zos.putNextEntry(new ZipEntry(exportName + ".ped"));
         TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = writeGenotypeFile(zos, sModule, nQueryChunkSize, null, varQuery, markerSynonyms, individualExportFiles, warningFileWriter, progress);
     	zos.closeEntry();

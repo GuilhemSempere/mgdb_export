@@ -148,7 +148,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 	}
 
     @Override
-    public void exportData(OutputStream outputStream, String sModule, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
 		List<String> sortedIndividuals = samplesToExport.stream().map(gs -> gs.getIndividual()).distinct().sorted(new AlphaNumericComparator<String>()).collect(Collectors.toList());
 
 		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
@@ -156,7 +156,14 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
         FileWriter warningFileWriter = new FileWriter(warningFile);
         ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
 		String exportName = sModule + "__" + markerCount + "variants__" + sortedIndividuals.size() + "individuals";
-
+        
+        if (individualMetadataFieldsToExport != null && !individualMetadataFieldsToExport.isEmpty()) {
+        	zos.putNextEntry(new ZipEntry(exportName + ".metadata.tsv"));
+        	zos.write("individual".getBytes());
+	        IExportHandler.writeMetadataFile(sModule, sortedIndividuals, individualMetadataFieldsToExport, zos);
+	    	zos.closeEntry();
+        }
+        
     	VariantContextWriter writer = null;		
 		try {
 			List<String> distinctSequenceNames = new ArrayList<String>();

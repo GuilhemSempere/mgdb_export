@@ -90,7 +90,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
      */
     @Override
     public String getExportFormatDescription() {
-        return "Exports data in HapMap Format. See <a target='_blank' href='http://heidi.chnebu.ch/doku.php?id=hapmap'>http://heidi.chnebu.ch/doku.php?id=hapmap</a> for more details";
+        return "Exports data in HapMap Format. See <a target='_blank' href='https://bitbucket.org/tasseladmin/tassel-5-source/wiki/UserManual/Load/Load'>https://bitbucket.org/tasseladmin/tassel-5-source/wiki/UserManual/Load/Load</a> for more details";
     }
 
     /* (non-Javadoc)
@@ -107,7 +107,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 	}
 	
     @Override
-    public void exportData(OutputStream outputStream, String sModule, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
 		Map<String, Integer> individualPositions = new LinkedHashMap<>();
 		for (String ind : samplesToExport.stream().map(gs -> gs.getIndividual()).distinct().sorted(new AlphaNumericComparator<String>()).collect(Collectors.toList()))
 			individualPositions.put(ind, individualPositions.size());
@@ -118,6 +118,13 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
         ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
 		MongoCollection collWithPojoCodec = mongoTemplate.getDb().withCodecRegistry(ExportManager.pojoCodecRegistry).getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantRunData.class));
         String exportName = sModule + "__" + markerCount + "variants__" + individualPositions.size() + "individuals";
+        
+        if (individualMetadataFieldsToExport != null && !individualMetadataFieldsToExport.isEmpty()) {
+        	zos.putNextEntry(new ZipEntry(exportName + ".metadata.tsv"));
+        	zos.write("individual".getBytes());
+	        IExportHandler.writeMetadataFile(sModule, individualPositions.keySet(), individualMetadataFieldsToExport, zos);
+	    	zos.closeEntry();
+        }
 
         zos.putNextEntry(new ZipEntry(exportName + ".hapmap"));
         String header = "rs#" + "\t" + "alleles" + "\t" + "chrom" + "\t" + "pos" + "\t" + "strand" + "\t" + "assembly#" + "\t" + "center" + "\t" + "protLSID" + "\t" + "assayLSID" + "\t" + "panelLSID" + "\t" + "QCcode";

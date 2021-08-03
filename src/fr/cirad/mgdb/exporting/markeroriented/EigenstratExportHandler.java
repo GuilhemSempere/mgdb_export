@@ -145,9 +145,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 	 * @see fr.cirad.mgdb.exporting.markeroriented.AbstractMarkerOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.List, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, int, int, java.util.Map)
      */
     @Override
-	public void exportData(OutputStream outputStream, String sModule, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
-//
-//    public void exportData(OutputStream outputStream, String sModule, Collection<GenotypingSample> samples1, Collection<GenotypingSample> samples2, ProgressIndicator progress, MongoCollection<Document> varColl, Document varQuery, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
+	public void exportData(OutputStream outputStream, String sModule, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
         File warningFile = File.createTempFile("export_warnings_", "");
         FileWriter warningFileWriter = new FileWriter(warningFile);
         File snpFile = null;
@@ -166,8 +164,14 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
  
             String exportName = sModule + "__" + markerCount + "variants__" + individualPositions.size() + "individuals";
             
+            if (individualMetadataFieldsToExport != null && !individualMetadataFieldsToExport.isEmpty()) {
+            	zos.putNextEntry(new ZipEntry(exportName + ".metadata.tsv"));
+            	zos.write("individual".getBytes());
+    	        IExportHandler.writeMetadataFile(sModule, individualPositions.keySet(), individualMetadataFieldsToExport, zos);
+    	    	zos.closeEntry();
+            }
+            
             zos.putNextEntry(new ZipEntry(exportName + ".eigenstratgeno"));
-
 			final Map<Integer, String> sampleIdToIndividualMap = new HashMap<>();
 			for (GenotypingSample gs : samplesToExport)
 				sampleIdToIndividualMap.put(gs.getId(), gs.getIndividual());
