@@ -165,7 +165,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
             String exportName = sModule + "__" + markerCount + "variants__" + individualPositions.size() + "individuals";
             
             if (individualMetadataFieldsToExport != null && !individualMetadataFieldsToExport.isEmpty()) {
-            	zos.putNextEntry(new ZipEntry(exportName + ".metadata.tsv"));
+            	zos.putNextEntry(new ZipEntry(sModule + "__" + individualPositions.size() + "individuals_metadata.tsv"));
             	zos.write("individual".getBytes());
     	        IExportHandler.writeMetadataFile(sModule, individualPositions.keySet(), individualMetadataFieldsToExport, zos);
     	    	zos.closeEntry();
@@ -187,14 +187,14 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 //    				String id = markerRunsToWrite.keySet().iterator().next();
 //    				System.out.println("writing " + id);
     				
-    				for (String idOfVarToWrite : markerRunsToWrite.keySet()) {
+    				for (List<VariantRunData> runsToWrite : markerRunsToWrite) {
     					if (progress.isAborted() || progress.getError() != null)
     						return;
 
-    					List<VariantRunData> runsToWrite = markerRunsToWrite.get(idOfVarToWrite);
-    					if (runsToWrite.isEmpty())
-    						continue;
-
+						if (runsToWrite == null || runsToWrite.isEmpty())
+							continue;
+    					
+    					String idOfVarToWrite = runsToWrite.get(0).getVariantId();
     					StringBuffer sb = new StringBuffer();
     					try
     					{
@@ -285,7 +285,6 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
     						progress.setError("Unable to export " + idOfVarToWrite + ": " + e.getMessage());
     					}
     				}
-    				markerRunsToWrite.clear();
 //    				long duration = System.currentTimeMillis() - b4;
 //    				System.out.println("wrote " + id + " in " + duration + "ms");
     			}

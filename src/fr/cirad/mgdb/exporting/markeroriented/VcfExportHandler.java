@@ -158,7 +158,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		String exportName = sModule + "__" + markerCount + "variants__" + sortedIndividuals.size() + "individuals";
         
         if (individualMetadataFieldsToExport != null && !individualMetadataFieldsToExport.isEmpty()) {
-        	zos.putNextEntry(new ZipEntry(exportName + ".metadata.tsv"));
+        	zos.putNextEntry(new ZipEntry(sModule + "__" + sortedIndividuals.size() + "individuals_metadata.tsv"));
         	zos.write("individual".getBytes());
 	        IExportHandler.writeMetadataFile(sModule, sortedIndividuals, individualMetadataFieldsToExport, zos);
 	    	zos.closeEntry();
@@ -308,23 +308,23 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 //			AtomicLong timeConverting = new AtomicLong(0), timeWriting = new AtomicLong(0);
 		AbstractExportWritingThread writingThread = new AbstractExportWritingThread() {
 			public void run() {
-				for (String idOfVarToWrite : markerRunsToWrite.keySet()) {
+				for (List<VariantRunData> runsToWrite : markerRunsToWrite) {
 					if (progress.isAborted() || progress.getError() != null)
 						return;
 
-					List<VariantRunData> runsToWrite = markerRunsToWrite.get(idOfVarToWrite);
-					if (runsToWrite.isEmpty())
+					if (runsToWrite == null || runsToWrite.isEmpty())
 						continue;
 					
+					String idOfVarToWrite = runsToWrite.get(0).getVariantId();
 					String variantId = null;
 					try
 					{
-//							long b4 = System.currentTimeMillis();
-//			                if (markerSynonyms != null) {
-//			                	String syn = markerSynonyms.get(idOfVarToWrite);
-//			                    if (syn != null)
-//			                    	idOfVarToWrite = syn;
-//			                }
+//						long b4 = System.currentTimeMillis();
+//		                if (markerSynonyms != null) {
+//		                	String syn = markerSynonyms.get(idOfVarToWrite);
+//		                    if (syn != null)
+//		                    	idOfVarToWrite = syn;
+//		                }
 	
 		                VariantRunData vrd = runsToWrite.get(0);
 						variantId = vrd.getId().getVariantId();
@@ -335,7 +335,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		                        variantId = syn;
 		                }
 
-						VariantContext vc = vrd.toVariantContext(markerRunsToWrite.get(idOfVarToWrite), !MgdbDao.idLooksGenerated(variantId.toString()), samplesToExport, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? variantId : markerSynonyms.get(variantId));
+						VariantContext vc = vrd.toVariantContext(runsToWrite, !MgdbDao.idLooksGenerated(variantId.toString()), samplesToExport, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? variantId : markerSynonyms.get(variantId));
 //							timeConverting.addAndGet(System.currentTimeMillis() - b4);
 						
 //							b4 = System.currentTimeMillis();
@@ -349,7 +349,6 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 						progress.setError("Unable to export " + idOfVarToWrite + ": " + e.getMessage());
 					}
 				}
-				markerRunsToWrite.clear();
 			}
 		};
 		

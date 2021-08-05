@@ -120,7 +120,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
         String exportName = sModule + "__" + markerCount + "variants__" + individualPositions.size() + "individuals";
         
         if (individualMetadataFieldsToExport != null && !individualMetadataFieldsToExport.isEmpty()) {
-        	zos.putNextEntry(new ZipEntry(exportName + ".metadata.tsv"));
+        	zos.putNextEntry(new ZipEntry(sModule + "__" + individualPositions.size()+ "individuals_metadata.tsv"));
         	zos.write("individual".getBytes());
 	        IExportHandler.writeMetadataFile(sModule, individualPositions.keySet(), individualMetadataFieldsToExport, zos);
 	    	zos.closeEntry();
@@ -141,14 +141,14 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 		AbstractExportWritingThread writingThread = new AbstractExportWritingThread() {
 			public void run() {				
                 HashMap<Object, Integer> genotypeCounts = new HashMap<Object, Integer>();	// will help us to keep track of missing genotypes
-				for (String idOfVarToWrite : markerRunsToWrite.keySet()) {
+                for (List<VariantRunData> runsToWrite : markerRunsToWrite) {
 					if (progress.isAborted() || progress.getError() != null)
 						return;
 
-					List<VariantRunData> runsToWrite = markerRunsToWrite.get(idOfVarToWrite);
-					if (runsToWrite.isEmpty())
+					if (runsToWrite == null || runsToWrite.isEmpty())
 						continue;
 
+					String idOfVarToWrite = runsToWrite.get(0).getVariantId();
 					StringBuffer sb = new StringBuffer();
 					try
 					{
@@ -235,7 +235,6 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 						progress.setError("Unable to export " + idOfVarToWrite + ": " + e.getMessage());
 					}
 				}
-				markerRunsToWrite.clear();
 			}
 		};
 

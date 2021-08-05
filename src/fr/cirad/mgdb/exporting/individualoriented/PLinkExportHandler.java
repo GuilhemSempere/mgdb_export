@@ -116,7 +116,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
         String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.length + "individuals";
         
         if (individualMetadataFieldsToExport != null && !individualMetadataFieldsToExport.isEmpty()) {
-        	zos.putNextEntry(new ZipEntry(exportName + ".metadata.tsv"));
+        	zos.putNextEntry(new ZipEntry(sModule + "__" + individualExportFiles.length + "individuals_metadata.tsv"));
         	zos.write("individual".getBytes());
 	        ArrayList<String> exportedIndividuals = new ArrayList<>();
 	        for (File indFile : individualExportFiles)
