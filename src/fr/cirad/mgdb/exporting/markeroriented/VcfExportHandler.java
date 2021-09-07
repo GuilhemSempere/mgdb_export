@@ -28,12 +28,10 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -41,7 +39,6 @@ import java.util.zip.ZipOutputStream;
 import org.apache.log4j.Logger;
 import org.bson.Document;
 import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.mapreduce.MapReduceResults;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 
@@ -118,7 +115,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 	 * Creates the sam sequence dictionary.
 	 *
 	 * @param sModule the module
-	 * @param sequenceIDs the sequence i ds
+	 * @param sequenceIDs the sequence IDs
 	 * @return the SAM sequence dictionary
 	 * @throws Exception the exception
 	 */
@@ -126,20 +123,13 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 	{
 		SAMSequenceDictionary dict1 = new SAMSequenceDictionary();
 		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
-		String sequenceSeqCollName = MongoTemplateManager.getMongoCollectionName(Sequence.class);
-		if (mongoTemplate.collectionExists(sequenceSeqCollName) && sequenceIDs.size() > 1)
-		{
+		if (mongoTemplate.collectionExists(MongoTemplateManager.getMongoCollectionName(Sequence.class))) {
 			long before = System.currentTimeMillis();
-			Query query = new Query(Criteria.where("_id").in(sequenceIDs));
-			String mapFunction = "function() { emit(this._id, this." + Sequence.FIELDNAME_SEQUENCE + ".length); }";
-			String reduceFunction = "function() { }";
-			MapReduceResults<Map> rs = MongoTemplateManager.get(sModule).mapReduce(query, sequenceSeqCollName, mapFunction, reduceFunction, Map.class);
-			Iterator<Map> it = rs.iterator();
-			while (it.hasNext())
-			{
-				Map map = it.next();
-				dict1.addSequence(new SAMSequenceRecord((String) map.get("_id"), ((Double) map.get("value")).intValue()));
-			}
+			Query query = sequenceIDs.isEmpty() ? new Query() : new Query(Criteria.where("_id").in(sequenceIDs));
+		
+			query.fields().include(Sequence.FIELDNAME_LENGTH);
+			for (Sequence seq : MongoTemplateManager.get(sModule).find(query, Sequence.class))
+				dict1.addSequence(new SAMSequenceRecord((String) seq.getId(), (int) seq.getLength()));
 	    	LOG.info("createSAMSequenceDictionary took " + (System.currentTimeMillis() - before)/1000d + "s to write " + sequenceIDs.size() + " sequences");
 		}
 		else
@@ -193,7 +183,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 			SAMSequenceDictionary dict = createSAMSequenceDictionary(sModule, distinctSequenceNames);
 			writer = new CustomVCFWriter(null, zos, dict, false, false, true);
 			zos.putNextEntry(new ZipEntry(exportName + ".vcf"));
-			writeGenotypeFile(sModule, individuals1, individuals2, progress, tmpVarCollName, varQuery, markerCount, markerSynonyms, annotationFieldThresholds, annotationFieldThresholds2, samplesToExport, sortedIndividuals, distinctSequenceNames, warningFileWriter, writer);
+			writeGenotypeFile(sModule, individuals1, individuals2, progress, tmpVarCollName, varQuery, markerCount, markerSynonyms, annotationFieldThresholds, annotationFieldThresholds2, samplesToExport, sortedIndividuals, distinctSequenceNames, dict, warningFileWriter, writer);
 		}
 		catch (Exception e)
 		{
@@ -232,7 +222,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		}
     }
 		
-    public void writeGenotypeFile(String sModule, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, List<String> sortedIndividuals, List<String> distinctSequenceNames, FileWriter warningFileWriter, VariantContextWriter writer) throws Exception {
+    public void writeGenotypeFile(String sModule, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, List<String> sortedIndividuals, List<String> distinctSequenceNames, SAMSequenceDictionary dict, FileWriter warningFileWriter, VariantContextWriter writer) throws Exception {
     	MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
 		Integer projectId = null;
 		for (GenotypingSample sample : samplesToExport)
@@ -292,8 +282,12 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				sequenceLineData.put("ID", (String) record.get("_id"));
 				sequenceLineData.put("length", ((Number) record.get(SequenceStats.FIELDNAME_SEQUENCE_LENGTH)).toString());
 			}
-			else
+			else {
 				sequenceLineData.put("ID", sequenceName);
+				SAMSequenceRecord dictSeq = dict.getSequence(sequenceName); 
+				if (dictSeq != null && dictSeq.getSequenceLength() > 0)
+					sequenceLineData.put("length", "" + dict.getSequence(sequenceName).getSequenceLength());
+			}
 			headerLines.add(new VCFContigHeaderLine(sequenceLineData, nSequenceIndex++));
 		}
 
