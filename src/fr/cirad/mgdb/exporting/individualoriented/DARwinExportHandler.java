@@ -20,6 +20,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
@@ -93,9 +94,6 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 		return "zip";
 	}
 
-    /* (non-Javadoc)
-	 * @see fr.cirad.mgdb.exporting.individualoriented.AbstractIndividualOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.Collection, boolean, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, java.util.Map)
-     */
     @Override
     public void exportData(OutputStream outputStream, String sModule, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
         MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
@@ -112,12 +110,10 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
         ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
         String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.length + "individuals";
         
-        StringBuffer donFileContents = new StringBuffer();
-        int count = 0;
         String missingGenotype = "";
-        for (int j = 0; j < ploidy; j++) {
+        for (int j = 0; j < ploidy; j++)
             missingGenotype += "\tN";
-        }
+        String finalMissingGenotype = missingGenotype;
 
         zos.putNextEntry(new ZipEntry(exportName + ".var"));
         zos.write(("@DARwin 5.0 - ALLELIC - " + ploidy + LINE_SEPARATOR + individualExportFiles.length + "\t" + markerCount * ploidy + LINE_SEPARATOR + "N°").getBytes());
@@ -125,7 +121,6 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
         short nProgress = 0, nPreviousProgress = 0;
         MongoCollection<Document> varColl = mongoTemplate.getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class));
 
-        int nMarkerIndex = 0;
         int nQueryChunkSize = IExportHandler.computeQueryChunkSize(mongoTemplate, markerCount);
 		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nQueryChunkSize)) {
 	        while (markerCursor.hasNext()) {
@@ -155,82 +150,115 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 
         TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = new TreeMap<Integer, Comparable>();
         ArrayList<String> distinctAlleles = new ArrayList<String>();	// the index of each allele will be used as its code
-        int i = 0;
+        String[] donFileContents = new String[indMap.size()];
+
+        int i = 0, nNConcurrentThreads = Math.max(1, Runtime.getRuntime().availableProcessors());	// use multiple threads so we can prepare several lines at once
+        HashMap<Integer, StringBuffer> individualLines = new HashMap<>(nNConcurrentThreads);
+        for (int j=0; j<nNConcurrentThreads; j++)
+        	individualLines.put(j, new StringBuffer());
+        final ArrayList<Thread> threadsToWaitFor = new ArrayList<>(nNConcurrentThreads);
+
         try {
-            for (File f : individualExportFiles) {
-                BufferedReader in = new BufferedReader(new FileReader(f));
-                try {
-                    String individualId, line = in.readLine();	// read sample id
+	        for (final File f : individualExportFiles) {
+	            if (progress.isAborted() || progress.getError() != null)
+	            	return;
 
-                    if (line != null)
-                        individualId = line;
-                    else
-                        throw new Exception("Unable to read first line of temp export file " + f.getName());
-                    
-                    donFileContents.append(++count + "\t" + individualId);
-                    for (String header : individualMetadataFieldsToExport)
-                    	donFileContents.append("\t" + Helper.nullToEmptyString(indMap.get(individualId).getAdditionalInfo().get(header)));
-                    donFileContents.append(LINE_SEPARATOR);
+	            final int nThreadIndex = i % nNConcurrentThreads;
+                final int count = i + 1;
+	            Thread thread = new Thread() {
+	                @Override
+	                public void run() {
+	    	        	StringBuffer indLine = individualLines.get(nThreadIndex);
+	                	BufferedReader in = null;
+	    	            try {
+		    	            in = new BufferedReader(new FileReader(f));
+		                    String individualId, line = in.readLine();	// read sample id
 
-                    zos.write((LINE_SEPARATOR + count).getBytes());
-                    nMarkerIndex = 0;
+		                    if (line != null)
+		                        individualId = line;
+		                    else
+		                        throw new Exception("Unable to read first line of temp export file " + f.getName());
+		                    
+		                    StringBuffer donFileLineSB = new StringBuffer();
+		                    donFileLineSB.append(count + "\t" + individualId);
+		                    for (String header : individualMetadataFieldsToExport)
+		                    	donFileLineSB.append("\t" + Helper.nullToEmptyString(indMap.get(individualId).getAdditionalInfo().get(header)));
+		                    donFileLineSB.append(LINE_SEPARATOR);
+		                    donFileContents[count - 1] = donFileLineSB.toString();
 
-                    while ((line = in.readLine()) != null) {
-                        List<String> genotypes = Helper.split(line, "|");
-                        HashMap<Object, Integer> genotypeCounts = new HashMap<Object, Integer>();	// will help us to keep track of missing genotypes
-                        int highestGenotypeCount = 0;
-                        String mostFrequentGenotype = null;
-                        for (String genotype : genotypes) {
-                            if (genotype == null)
-                                continue;	/* skip missing genotypes */
+		                    indLine.append(LINE_SEPARATOR + count);
+		                    int nMarkerIndex = 0;
 
-                            int gtCount = 1 + Helper.getCountForKey(genotypeCounts, genotype);
-                            if (gtCount > highestGenotypeCount) {
-                                highestGenotypeCount = gtCount;
-                                mostFrequentGenotype = genotype;
-                            }
-                            genotypeCounts.put(genotype, gtCount);
-                        }
+		                    while ((line = in.readLine()) != null) {
+		                        List<String> genotypes = Helper.split(line, "|");
+		                        HashMap<Object, Integer> genotypeCounts = new HashMap<Object, Integer>();	// will help us to keep track of missing genotypes
+		                        int highestGenotypeCount = 0;
+		                        String mostFrequentGenotype = null;
+		                        for (String genotype : genotypes) {
+		                            if (genotype == null)
+		                                continue;	/* skip missing genotypes */
 
-                        if (genotypeCounts.size() > 1) {
-                            warningFileWriter.write("- Dissimilar genotypes found for variant __" + nMarkerIndex + "__, individual " + individualId + ". Exporting most frequent: " + mostFrequentGenotype + "\n");
-                            problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
-                        }
+		                            int gtCount = 1 + Helper.getCountForKey(genotypeCounts, genotype);
+		                            if (gtCount > highestGenotypeCount) {
+		                                highestGenotypeCount = gtCount;
+		                                mostFrequentGenotype = genotype;
+		                            }
+		                            genotypeCounts.put(genotype, gtCount);
+		                        }
 
-                        String codedGenotype = "";
-                        if (mostFrequentGenotype != null && mostFrequentGenotype.length() > 0) {
-                            for (String allele : mostFrequentGenotype.split(" ")) {
-                                if (!distinctAlleles.contains(allele)) {
-                                    distinctAlleles.add(allele);
-                                }
-                                codedGenotype += "\t" + distinctAlleles.indexOf(allele);
-                            }
-                        } else {
-                            codedGenotype = missingGenotype.replaceAll("N", "-1");	// missing data is coded as -1		
-                        }
-                        zos.write(codedGenotype.getBytes());
+		                        if (genotypeCounts.size() > 1) {
+		                            warningFileWriter.write("- Dissimilar genotypes found for variant __" + nMarkerIndex + "__, individual " + individualId + ". Exporting most frequent: " + mostFrequentGenotype + "\n");
+		                            problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
+		                        }
 
-                        nMarkerIndex++;
-                    }
-                } catch (Exception e) {
-                    LOG.error("Error exporting data", e);
-                    progress.setError("Error exporting data: " + e.getClass().getSimpleName() + (e.getMessage() != null ? " - " + e.getMessage() : ""));
-                    return;
-                } finally {
-                    in.close();
-                    warningFileWriter.close();
-                }
+		                        String codedGenotype = "";
+		                        if (mostFrequentGenotype != null && mostFrequentGenotype.length() > 0) {
+		                            for (String allele : mostFrequentGenotype.split(" ")) {
+		                                if (!distinctAlleles.contains(allele)) {
+		                                    distinctAlleles.add(allele);
+		                                }
+		                                codedGenotype += "\t" + distinctAlleles.indexOf(allele);
+		                            }
+		                        } else
+		                            codedGenotype = finalMissingGenotype.replaceAll("N", "-1");	// missing data is coded as -1		
+		                        indLine.append(codedGenotype);
 
-                if (progress.isAborted()) {
-                    return;
-                }
+		                        nMarkerIndex++;
+			                }
+	    	            } catch (Exception e) {
+	    	                LOG.error("Error exporting data", e);
+	    	                progress.setError("Error exporting data: " + e.getClass().getSimpleName() + (e.getMessage() != null ? " - " + e.getMessage() : ""));
+	    	            } finally {
+	    	            	if (in != null)
+								try {
+									in.close();
+								} catch (IOException e) {
+									LOG.warn(e);
+								}               
+	    	            }
+	                }
+	            };
+	            
+	            thread.start();
+	            threadsToWaitFor.add(thread);
 
-                nProgress = (short) (++i * 100 / individualExportFiles.length);
-                if (nProgress > nPreviousProgress) {
-                    progress.setCurrentStepProgress(nProgress);
-                    nPreviousProgress = nProgress;
-                }
-            }
+	            if (++i % nNConcurrentThreads == 0 || i == individualExportFiles.length) {
+	                for (Thread t : threadsToWaitFor) // wait for all previously launched async threads
+	               		t.join();
+	                
+	                for (int j=0; j<nNConcurrentThreads; j++) {
+	                	zos.write(individualLines.get(j).toString().getBytes());
+	                	individualLines.put(j, new StringBuffer());
+	                }
+
+    	            nProgress = (short) (i * 100 / individualExportFiles.length);
+    	            if (nProgress > nPreviousProgress) {
+    	                progress.setCurrentStepProgress(nProgress);
+    	                nPreviousProgress = nProgress;
+    	            }
+	                threadsToWaitFor.clear();
+	            }
+	        }
         }
         finally
         {
@@ -248,10 +276,11 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
         for (String header : individualMetadataFieldsToExport)
         	donFileHeader += "\t" + header;
         zos.write((donFileHeader + LINE_SEPARATOR).getBytes());
-        zos.write(donFileContents.toString().getBytes());
+        for (String donIndLine : donFileContents)
+        	zos.write(donIndLine.getBytes());
 
         // now read variant names for those that induced warnings
-        nMarkerIndex = 0;
+        int nMarkerIndex = 0;
 		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nQueryChunkSize)) {
 	        while (markerCursor.hasNext()) {
 	            Document exportVariant = markerCursor.next();

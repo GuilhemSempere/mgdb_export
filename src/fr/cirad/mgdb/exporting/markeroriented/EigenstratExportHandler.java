@@ -128,9 +128,9 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
         return "Exports zipped ind, snp and eigenstratgeno files, along with an optional remark-file. See <a target='_blank' href='https://github.com/argriffing/eigensoft/blob/master/CONVERTF/README'>https://github.com/argriffing/eigensoft/blob/master/CONVERTF/README</a> for more details";
     }
 
-    /* (non-Javadoc)
-	 * @see fr.cirad.mgdb.exporting.markeroriented.AbstractMarkerOrientedExportHandler#getSupportedVariantTypes()
-     */
+	/* (non-Javadoc)
+	 * @see fr.cirad.mgdb.exporting.IExportHandler#getSupportedVariantTypes()
+	 */
     @Override
     public List<String> getSupportedVariantTypes() {
         return supportedVariantTypes;

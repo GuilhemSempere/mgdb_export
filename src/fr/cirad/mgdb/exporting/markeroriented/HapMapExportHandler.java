@@ -93,9 +93,9 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
         return "Exports data in HapMap Format. See <a target='_blank' href='https://bitbucket.org/tasseladmin/tassel-5-source/wiki/UserManual/Load/Load'>https://bitbucket.org/tasseladmin/tassel-5-source/wiki/UserManual/Load/Load</a> for more details";
     }
 
-    /* (non-Javadoc)
-	 * @see fr.cirad.mgdb.exporting.markeroriented.AbstractMarkerOrientedExportHandler#getSupportedVariantTypes()
-     */
+	/* (non-Javadoc)
+	 * @see fr.cirad.mgdb.exporting.IExportHandler#getSupportedVariantTypes()
+	 */
     @Override
     public List<String> getSupportedVariantTypes() {
         return supportedVariantTypes;
