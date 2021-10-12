@@ -329,7 +329,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		                        variantId = syn;
 		                }
 
-						VariantContext vc = vrd.toVariantContext(runsToWrite, !MgdbDao.idLooksGenerated(variantId.toString()), samplesToExport, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? variantId : markerSynonyms.get(variantId));
+						VariantContext vc = vrd.toVariantContext(mongoTemplate, runsToWrite, !MgdbDao.idLooksGenerated(variantId.toString()), samplesToExport, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? variantId : markerSynonyms.get(variantId));
 //							timeConverting.addAndGet(System.currentTimeMillis() - b4);
 						
 //							b4 = System.currentTimeMillis();
