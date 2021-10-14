@@ -133,6 +133,8 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
         int nMarkerIndex = 0;
         ArrayList<Comparable> unassignedMarkers = new ArrayList<>();
 		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(mongoTemplate.getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class)), varQuery, nQueryChunkSize)) {
+            progress.addStep("Writing map file");
+            progress.moveToNextStep();
 	        while (markerCursor.hasNext()) {
 	            Document exportVariant = markerCursor.next();
 	            Document refPos = (Document) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION);
@@ -144,16 +146,16 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	            String exportedId = markerSynonyms == null ? markerId : markerSynonyms.get(markerId);
 	            zos.write(((chrom == null ? "0" : chrom) + " " + exportedId + " " + 0 + " " + (pos == null ? 0 : pos) + LINE_SEPARATOR).getBytes());
 	
-	            if (problematicMarkerIndexToNameMap.containsKey(nMarkerIndex)) {	// we are going to need this marker's name for the warning file
-	            	String variantName = markerId;
-	                if (markerSynonyms != null) {
-	                	String syn = markerSynonyms.get(markerId);
-	                    if (syn != null)
-	                        variantName = syn;
-	                }
-	                problematicMarkerIndexToNameMap.put(nMarkerIndex, variantName);
-	            }
-	            nMarkerIndex++;
+//	            if (problematicMarkerIndexToNameMap.containsKey(nMarkerIndex)) {	// we are going to need this marker's name for the warning file
+//	            	String variantName = markerId;
+//	                if (markerSynonyms != null) {
+//	                	String syn = markerSynonyms.get(markerId);
+//	                    if (syn != null)
+//	                        variantName = syn;
+//	                }
+//	                problematicMarkerIndexToNameMap.put(nMarkerIndex, variantName);
+//	            }
+                progress.setCurrentStepProgress(nMarkerIndex++ * 100 / markerCount);
 	        }
 		}
         zos.closeEntry();
@@ -162,16 +164,16 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
         	LOG.info("No chromosomal position found for " + unassignedMarkers.size() + " markers " + StringUtils.join(unassignedMarkers, ", "));
 
         if (warningFile.length() > 0) {
+            progress.addStep("Adding lines to warning file");
+            progress.moveToNextStep();
+            progress.setPercentageEnabled(false);
             zos.putNextEntry(new ZipEntry(exportName + "-REMARKS.txt"));
             int nWarningCount = 0;
             BufferedReader in = new BufferedReader(new FileReader(warningFile));
             String sLine;
             while ((sLine = in.readLine()) != null) {
-                for (Integer aMarkerIndex : problematicMarkerIndexToNameMap.keySet()) {
-                    sLine = sLine.replaceAll("__" + aMarkerIndex + "__", problematicMarkerIndexToNameMap.get(aMarkerIndex).toString());
-                }
                 zos.write((sLine + "\n").getBytes());
-                nWarningCount++;
+                progress.setCurrentStepProgress(nWarningCount++);
             }
             LOG.info("Number of Warnings for export (" + exportName + "): " + nWarningCount);
             in.close();
@@ -181,6 +183,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 
         zos.finish();
         zos.close();
+        progress.setPercentageEnabled(true);
         progress.setCurrentStepProgress((short) 100);
     }
     
@@ -238,14 +241,14 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 			
 			                    if (genotypeCounts.size() > 1) {
 			                    	if (warningFileWriter != null)
-			                    		warningFileWriter.write("- Dissimilar genotypes found for variant " + nMarkerIndex + ", individual " + individualId + ". Exporting most frequent: " + mostFrequentGenotype + "\n");
+			                    		warningFileWriter.write("- Dissimilar genotypes found for variant , individual " + individualId + ". Exporting most frequent: " + mostFrequentGenotype + "\n");
 			                        problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
 			                    }
 			
 			                    String[] alleles = mostFrequentGenotype == null ? new String[0] : mostFrequentGenotype.split(" ");
 			                    if (alleles.length > 2) {
 			                    	if (warningFileWriter != null)
-			                    		warningFileWriter.write("- More than 2 alleles found for variant " + nMarkerIndex + ", individual " + individualId + ". Exporting only the first 2 alleles.\n");
+			                    		warningFileWriter.write("- More than 2 alleles found for variant , individual " + individualId + ". Exporting only the first 2 alleles.\n");
 			                        problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
 			                    }
 			
@@ -253,7 +256,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 			                    String all2 = alleles.length == 0 ? "0" : alleles[alleles.length == 1 ? 0 : 1];
 			                    if (all1.length() != 1 || all2.length() != 1) {
 			                    	if (warningFileWriter != null)
-			                    		warningFileWriter.write("- SNP expected, but alleles are not coded on a single char for variant " + nMarkerIndex + ", individual " + individualId + ". Ignoring this genotype.\n");
+			                    		warningFileWriter.write("- SNP expected, but alleles are not coded on a single char for variant , individual " + individualId + ". Ignoring this genotype.\n");
 			                        problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
 			                    } else
 			                        indLine.append(" " + all1 + " " + all2);

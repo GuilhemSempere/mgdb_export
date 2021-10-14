@@ -207,7 +207,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 								}
 
 								if (genotypeCounts.size() > 1) {
-									warningFileWriter.write("- Dissimilar genotypes found for variant __" + nMarkerIndex + "__, individual " + individualId + ". Exporting most frequent: " + mostFrequentGenotype + "\n");
+									warningFileWriter.write("- Dissimilar genotypes found for variant n. " + nMarkerIndex + ", individual " + individualId + ". Exporting most frequent: " + mostFrequentGenotype + "\n");
 									problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
 								}
 
@@ -271,7 +271,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 		}
 		zos.closeEntry();
 
-		zos.putNextEntry(new ZipEntry(exportName + ".don"));		
+		zos.putNextEntry(new ZipEntry(exportName + ".don"));
 		String donFileHeader = "@DARwin 5.0 - DON -" + LINE_SEPARATOR + individualExportFiles.length + "\t" + (1 + individualMetadataFieldsToExport.size()) + LINE_SEPARATOR + "N°" + "\t" + "individual";
 		for (String header : individualMetadataFieldsToExport)
 			donFileHeader += "\t" + header;
@@ -279,40 +279,40 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 		for (String donIndLine : donFileContents)
 			zos.write(donIndLine.getBytes());
 
-		// now read variant names for those that induced warnings
-		int nMarkerIndex = 0;
-		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nQueryChunkSize)) {
-			while (markerCursor.hasNext()) {
-				Document exportVariant = markerCursor.next();
-				if (problematicMarkerIndexToNameMap.containsKey(nMarkerIndex)) {
-					Comparable markerId = (Comparable) exportVariant.get("_id");
-	
-					if (markerSynonyms != null) {
-						Comparable syn = markerSynonyms.get(markerId);
-						if (syn != null)
-							markerId = syn;
-					}
-					for (int j = 0; j < ploidy; j++)
-						zos.write(("\t" + markerId).getBytes());
-	
-					problematicMarkerIndexToNameMap.put(nMarkerIndex, markerId);
-				}
-			}
-		}
+//		// now read variant names for those that induced warnings
+//		int nMarkerIndex = 0;
+//		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nQueryChunkSize)) {
+//			while (markerCursor.hasNext()) {
+//				Document exportVariant = markerCursor.next();
+//				if (problematicMarkerIndexToNameMap.containsKey(nMarkerIndex)) {
+//					Comparable markerId = (Comparable) exportVariant.get("_id");
+//	
+//					if (markerSynonyms != null) {
+//						Comparable syn = markerSynonyms.get(markerId);
+//						if (syn != null)
+//							markerId = syn;
+//					}
+//					for (int j = 0; j < ploidy; j++)
+//						zos.write(("\t" + markerId).getBytes());
+//	
+//					problematicMarkerIndexToNameMap.put(nMarkerIndex, markerId);
+//				}
+//			}
+//		}
 		zos.closeEntry();
 
 		warningFileWriter.close();
 		if (warningFile.length() > 0) {
+            progress.addStep("Adding lines to warning file");
+            progress.moveToNextStep();
+            progress.setPercentageEnabled(false);
 			zos.putNextEntry(new ZipEntry(exportName + "-REMARKS.txt"));
 			int nWarningCount = 0;
 			BufferedReader in = new BufferedReader(new FileReader(warningFile));
 			String sLine;
 			while ((sLine = in.readLine()) != null) {
-				for (Integer aMarkerIndex : problematicMarkerIndexToNameMap.keySet()) {
-					sLine = sLine.replaceAll("__" + aMarkerIndex + "__", problematicMarkerIndexToNameMap.get(aMarkerIndex).toString());
-				}
 				zos.write((sLine + "\n").getBytes());
-				nWarningCount++;
+                progress.setCurrentStepProgress(nWarningCount++);
 			}
 			LOG.info("Number of Warnings for export (" + exportName + "): " + nWarningCount);
 			in.close();
@@ -322,6 +322,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 
 		zos.finish();
 		zos.close();
+		progress.setPercentageEnabled(true);
 		progress.setCurrentStepProgress((short) 100);
 	}
 
