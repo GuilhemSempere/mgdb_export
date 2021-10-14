@@ -32,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+//import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -225,8 +226,10 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
     public void writeGenotypeFile(String sModule, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, List<String> sortedIndividuals, List<String> distinctSequenceNames, SAMSequenceDictionary dict, FileWriter warningFileWriter, VariantContextWriter writer) throws Exception {
     	MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
 		Integer projectId = null;
-		for (GenotypingSample sample : samplesToExport)
-		{
+		
+		Map<Integer, String> sampleIdToIndividualMap = new HashMap<>();
+		for (GenotypingSample sample : samplesToExport) {
+		    sampleIdToIndividualMap.put(sample.getId(), sample.getIndividual());
 			if (projectId == null)
 				projectId = sample.getProjectId();
 			else if (projectId != sample.getProjectId())
@@ -235,6 +238,10 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				break;	// more than one project are involved: no header will be written
 			}
 		}
+		
+	    Map<String, Integer> individualPositions = new LinkedHashMap<>();
+        for (String ind : samplesToExport.stream().map(gs -> gs.getIndividual()).distinct().sorted(new AlphaNumericComparator<String>()).collect(Collectors.toList()))
+            individualPositions.put(ind, individualPositions.size());
 
 //			VariantContextWriterBuilder vcwb = new VariantContextWriterBuilder();
 //			vcwb.unsetOption(Options.INDEX_ON_THE_FLY);
@@ -299,7 +306,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		HashMap<Integer, Object /*phID*/> phasingIDsBySample = new HashMap<>();
 		
 		final VariantContextWriter finalVariantContextWriter = writer;
-//			AtomicLong timeConverting = new AtomicLong(0), timeWriting = new AtomicLong(0);
+//		AtomicLong timeConverting = new AtomicLong(0), timeWriting = new AtomicLong(0);
 		AbstractExportWritingThread writingThread = new AbstractExportWritingThread() {
 			public void run() {
 				for (List<VariantRunData> runsToWrite : markerRunsToWrite) {
@@ -309,32 +316,31 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 					if (runsToWrite == null || runsToWrite.isEmpty())
 						continue;
 					
-					String idOfVarToWrite = runsToWrite.get(0).getVariantId();
+//                    long b4 = System.currentTimeMillis();
+                    VariantRunData vrd = runsToWrite.get(0);
+					String idOfVarToWrite = vrd.getVariantId();
 					String variantId = null;
 					try
 					{
-//						long b4 = System.currentTimeMillis();
 //		                if (markerSynonyms != null) {
 //		                	String syn = markerSynonyms.get(idOfVarToWrite);
 //		                    if (syn != null)
 //		                    	idOfVarToWrite = syn;
 //		                }
 	
-		                VariantRunData vrd = runsToWrite.get(0);
-						variantId = vrd.getId().getVariantId();
-						
+						variantId = idOfVarToWrite;						
 		                if (markerSynonyms != null) {
 		                	String syn = markerSynonyms.get(variantId);
 		                    if (syn != null)
 		                        variantId = syn;
 		                }
 
-						VariantContext vc = vrd.toVariantContext(mongoTemplate, runsToWrite, !MgdbDao.idLooksGenerated(variantId.toString()), samplesToExport, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? variantId : markerSynonyms.get(variantId));
-//							timeConverting.addAndGet(System.currentTimeMillis() - b4);
+						VariantContext vc = vrd.toVariantContext(mongoTemplate, runsToWrite, !MgdbDao.idLooksGenerated(variantId), samplesToExport, individualPositions, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? variantId : markerSynonyms.get(variantId));
+//						timeConverting.addAndGet(System.currentTimeMillis() - b4);
 						
-//							b4 = System.currentTimeMillis();
+//						b4 = System.currentTimeMillis();
 						finalVariantContextWriter.add(vc);
-//							timeWriting.addAndGet(System.currentTimeMillis() - b4);
+//						timeWriting.addAndGet(System.currentTimeMillis() - b4);
 					}
 					catch (Exception e)
 					{
@@ -352,8 +358,8 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		ExportManager exportManager = new ExportManager(mongoTemplate, collWithPojoCodec, VariantRunData.class, varQuery, samplesToExport, true, nQueryChunkSize, writingThread, markerCount, warningFileWriter, progress);
 		exportManager.readAndWrite();
 
-//			System.out.println("time spent converting: " + timeConverting.get());
-//			System.out.println("time spent writing: " + timeWriting.get());
+//		System.out.println("time spent converting: " + timeConverting.get());
+//		System.out.println("time spent writing: " + timeWriting.get());
 	}
     
 	@Override
