@@ -168,14 +168,17 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 
 	                	for (VariantRunData run : runsToWrite) {
 	                    	for (Integer sampleId : run.getSampleGenotypes().keySet()) {
+                                String individualId = sampleIdToIndividualMap.get(sampleId);
+                                Integer individualIndex = individualPositions.get(individualId);
+                                if (individualIndex == null)
+                                    continue;   // unwanted sample
+
 								SampleGenotype sampleGenotype = run.getSampleGenotypes().get(sampleId);
 	                            String gtCode = sampleGenotype.getCode();
-	                            String individualId = sampleIdToIndividualMap.get(sampleId);
 	                            
 								if (gtCode == null || !VariantData.gtPassesVcfAnnotationFilters(individualId, sampleGenotype, individuals1, annotationFieldThresholds, individuals2, annotationFieldThresholds2))
 									continue;	// skip genotype
 								
-								int individualIndex = individualPositions.get(individualId);
 								if (individualGenotypes[individualIndex] == null)
 									individualGenotypes[individualIndex] = new LinkedHashSet<String>();
 								individualGenotypes[individualIndex].add(gtCode);
