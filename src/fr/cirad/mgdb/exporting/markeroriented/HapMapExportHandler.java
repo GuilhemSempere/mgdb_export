@@ -75,7 +75,10 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
     static {
         supportedVariantTypes = new ArrayList<String>();
         supportedVariantTypes.add(Type.SNP.toString());
+        supportedVariantTypes.add(Type.MNP.toString());
         supportedVariantTypes.add(Type.INDEL.toString());
+        supportedVariantTypes.add(Type.MIXED.toString());
+        supportedVariantTypes.add(Type.NO_VARIATION.toString());
     }
 
     /* (non-Javadoc)
