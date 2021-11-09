@@ -75,7 +75,7 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
      */
     @Override
     public String getExportFormatDescription() {
-        return "Exports zipped GENOTYPE and MAP files. See <a target='_blank' href='https://ics.hutton.ac.uk/wiki/index.php/Flapjack_Help_-_Projects_and_Data_Formats'>https://ics.hutton.ac.uk/wiki/index.php/Flapjack_Help_-_Projects_and_Data_Formats</a> for more details";
+        return "Exports zipped GENOTYPE and MAP files (and PHENOTYPE file if metadata selected). See <a target='_blank' href='https://ics.hutton.ac.uk/wiki/index.php/Flapjack_Help_-_Projects_and_Data_Formats'>https://ics.hutton.ac.uk/wiki/index.php/Flapjack_Help_-_Projects_and_Data_Formats</a> for more details";
     }
     
 	@Override
@@ -348,11 +348,16 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
     
 	@Override
 	public String[] getExportDataFileExtensions() {
-		return new String[] {"genotype", "map"};
+		return new String[] {"genotype", "map", "phenotype"};
 	}
 
 	@Override
 	public String getExportContentType() {
 		return "application/x-fjzip";
 	}
+	
+    @Override
+    public int[] getSupportedPloidyLevels() {
+        return null;
+    }
 }

@@ -312,4 +312,9 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 	public String[] getExportDataFileExtensions() {
 		return new String[] {"gff3"};
 	}
+	
+    @Override
+    public int[] getSupportedPloidyLevels() {
+        return null;
+    }
 }

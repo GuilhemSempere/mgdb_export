@@ -140,4 +140,9 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 	public String[] getExportDataFileExtensions() {
 		return new String[] {"bed"};
 	}
+	
+    @Override
+    public int[] getSupportedPloidyLevels() {
+        return null;
+    }
 }

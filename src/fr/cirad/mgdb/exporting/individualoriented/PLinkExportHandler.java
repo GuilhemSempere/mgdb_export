@@ -71,6 +71,10 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
     static {
         supportedVariantTypes = new ArrayList<String>();
         supportedVariantTypes.add(Type.SNP.toString());
+        supportedVariantTypes.add(Type.MNP.toString());
+        supportedVariantTypes.add(Type.INDEL.toString());
+        supportedVariantTypes.add(Type.MIXED.toString());
+        supportedVariantTypes.add(Type.NO_VARIATION.toString());
     }
 
     /* (non-Javadoc)
@@ -254,12 +258,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 			
 			                    String all1 = alleles.length == 0 ? "0" : alleles[0];
 			                    String all2 = alleles.length == 0 ? "0" : alleles[alleles.length == 1 ? 0 : 1];
-			                    if (all1.length() != 1 || all2.length() != 1) {
-			                    	if (warningFileWriter != null)
-			                    		warningFileWriter.write("- SNP expected, but alleles are not coded on a single char for variant , individual " + individualId + ". Ignoring this genotype.\n");
-			                        problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
-			                    } else
-			                        indLine.append(" " + all1 + " " + all2);
+		                        indLine.append(" " + all1 + " " + all2);
 			
 			                    nMarkerIndex++;
 			                }
@@ -337,4 +336,9 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	public String[] getExportDataFileExtensions() {
 		return new String[] {"ped", "map"};
 	}
+
+    @Override
+    public int[] getSupportedPloidyLevels() {
+        return new int[] {2};
+    }
 }

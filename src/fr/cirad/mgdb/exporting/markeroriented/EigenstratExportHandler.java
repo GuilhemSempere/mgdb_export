@@ -357,4 +357,9 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 	public String[] getExportDataFileExtensions() {
 		return new String[] {"snp", "ind", "eigenstratgeno"};
 	}
+	
+    @Override
+    public int[] getSupportedPloidyLevels() {
+        return new int[] {2};
+    }
 }
