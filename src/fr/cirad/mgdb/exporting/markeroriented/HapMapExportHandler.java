@@ -25,11 +25,13 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -65,7 +67,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
      */
     private static final Logger LOG = Logger.getLogger(HapMapExportHandler.class);
 
-    public static final String missingGenotype = "\tNN";
+    public static final String missingGenotype = "NN";
     
     /**
      * The supported variant types.
@@ -131,15 +133,17 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
         }
 
         zos.putNextEntry(new ZipEntry(exportName + ".hapmap"));
-        String header = "rs#" + "\t" + "alleles" + "\t" + "chrom" + "\t" + "pos" + "\t" + "strand" + "\t" + "assembly#" + "\t" + "center" + "\t" + "protLSID" + "\t" + "assayLSID" + "\t" + "panelLSID" + "\t" + "QCcode";
+        String header = "rs#\talleles\tchrom\tpos\tstrand\tassembly#\tcenter\tprotLSID\tassayLSID\tpanelLSID\tQCcode";
         zos.write(header.getBytes());
-        for (String individual : individualPositions.keySet())
-            zos.write(("\t" + individual).getBytes());
+        for (String individual : individualPositions.keySet()) {
+            zos.write("\t".getBytes());
+            zos.write(individual.getBytes());
+        }
         zos.write((LINE_SEPARATOR).getBytes());
 
-		final Map<Integer, String> sampleIdToIndividualMap = new HashMap<>();
-		for (GenotypingSample gs : samplesToExport)
-			sampleIdToIndividualMap.put(gs.getId(), gs.getIndividual());
+        final Map<Integer, String> sampleIdToIndividualMap = samplesToExport.stream().collect(Collectors.toMap(GenotypingSample::getId, sp -> sp.getIndividual()));
+		
+		final AtomicInteger initialStringBuilderCapacity = new AtomicInteger();
 
 		int nQueryChunkSize = IExportHandler.computeQueryChunkSize(mongoTemplate, markerCount);	
 		AbstractExportWritingThread writingThread = new AbstractExportWritingThread() {
@@ -153,7 +157,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 						continue;
 
 					String idOfVarToWrite = runsToWrite.get(0).getVariantId();
-					StringBuffer sb = new StringBuffer();
+					StringBuilder sb = new StringBuilder(initialStringBuilderCapacity.get() == 0 ? 3 * individualPositions.size() /* rough estimation */ : initialStringBuilderCapacity.get());
 					try
 					{
 		                if (markerSynonyms != null) {
@@ -166,7 +170,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 		                boolean fIsSNP = vrd.getType().equals(Type.SNP.toString());
 
 		                ReferencePosition rp = vrd.getReferencePosition();
-		                sb.append(/*(variantId == null ? variant.getId() : */idOfVarToWrite/*)*/ + "\t" + StringUtils.join((vrd).getKnownAlleleList(), "/") + "\t" + (rp == null ? 0 : rp.getSequence()) + "\t" + (rp == null ? 0 : rp.getStartSite()) + "\t" + "+\tNA\tNA\tNA\tNA\tNA\tNA");
+		                sb.append(idOfVarToWrite).append("\t").append(StringUtils.join((vrd).getKnownAlleleList(), "/")).append("\t").append((rp == null ? 0 : rp.getSequence())).append("\t").append((rp == null ? 0 : rp.getStartSite())).append("\t").append("+\tNA\tNA\tNA\tNA\tNA\tNA");
 	
 		                LinkedHashSet<String>[] individualGenotypes = new LinkedHashSet[individualPositions.size()];
 
@@ -203,29 +207,38 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 		                    int highestGenotypeCount = 0;
 		                    String mostFrequentGenotype = null;
 		                    if (individualGenotypes[individualIndex] != null) {
-		                        for (String genotype : individualGenotypes[individualIndex]) {
-		                            if (genotype == null)
-		                                continue;	/* skip missing genotypes */
-	
-		                            int gtCount = 1 + Helper.getCountForKey(genotypeCounts, genotype);
-		                            if (gtCount > highestGenotypeCount) {
-		                                highestGenotypeCount = gtCount;
-		                                mostFrequentGenotype = genotype;
-		                            }
-		                            genotypeCounts.put(genotype, gtCount);
-		                        }
+                                if (individualGenotypes[individualIndex].size() == 1)
+                                    mostFrequentGenotype = individualGenotypes[individualIndex].iterator().next();
+                                else {
+    		                        for (String genotype : individualGenotypes[individualIndex]) {
+    		                            if (genotype == null)
+    		                                continue;	/* skip missing genotypes */
+    	
+    		                            int gtCount = 1 + Helper.getCountForKey(genotypeCounts, genotype);
+    		                            if (gtCount > highestGenotypeCount) {
+    		                                highestGenotypeCount = gtCount;
+    		                                mostFrequentGenotype = genotype;
+    		                            }
+    		                            genotypeCounts.put(genotype, gtCount);
+    		                        }
+                                }
 		                    }
-	
-		                    String exportedGT = genotypeStringCache.get(mostFrequentGenotype);
+
+		                    String exportedGT = mostFrequentGenotype == null ? missingGenotype : genotypeStringCache.get(mostFrequentGenotype);
 		                    if (exportedGT == null) {
-		                    	exportedGT = mostFrequentGenotype == null ? missingGenotype : ("\t" + StringUtils.join(vrd.safelyGetAllelesFromGenotypeCode(mostFrequentGenotype, mongoTemplate), fIsSNP ? "" : "/"));
+		                    	exportedGT = StringUtils.join(vrd.safelyGetAllelesFromGenotypeCode(mostFrequentGenotype, mongoTemplate), fIsSNP ? "" : "/");
 		                    	genotypeStringCache.put(mostFrequentGenotype, exportedGT);
 		                    }
+		                    sb.append("\t");
 		                    sb.append(exportedGT);
 		                    writtenGenotypeCount++;
 	
-		                    if (genotypeCounts.size() > 1)
-		                        warningFileWriter.write("- Dissimilar genotypes found for variant " + /*(variantId == null ? variant.getId() : */idOfVarToWrite/*)*/ + ", individual " + individual + ". Exporting most frequent: " + new String(exportedGT) + "\n");
+		                    if (genotypeCounts.size() > 1) {
+                                List<Integer> reverseSortedGtCounts = genotypeCounts.values().stream().sorted(Comparator.reverseOrder()).collect(Collectors.toList());
+                                if (reverseSortedGtCounts.get(0) == reverseSortedGtCounts.get(1))
+                                    mostFrequentGenotype = null;
+		                        warningFileWriter.write("- Dissimilar genotypes found for variant " + /*(variantId == null ? variant.getId() : */idOfVarToWrite/*)*/ + ", individual " + individual + ". " + (mostFrequentGenotype == null ? "Exporting as missing data" : "Exporting most frequent: " + new String(exportedGT)) + "\n");
+                            }
 		                }
 	
 		                while (writtenGenotypeCount < individualPositions.size()) {
@@ -233,6 +246,8 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 		                    writtenGenotypeCount++;
 		                }
 		                sb.append(LINE_SEPARATOR);
+		                if (initialStringBuilderCapacity.get() == 0)
+		                    initialStringBuilderCapacity.set(sb.length());
 			            zos.write(sb.toString().getBytes());
 	                }
 					catch (Exception e)

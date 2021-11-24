@@ -203,7 +203,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				BufferedReader in = new BufferedReader(new FileReader(warningFile));
 				String sLine;
 				while ((sLine = in.readLine()) != null) {
-					outputStream.write((sLine + "\n").getBytes());
+					zos.write((sLine + "\n").getBytes());
 					nWarningCount++;
 				}
 				LOG.info("Number of Warnings for export (" + exportName + "): " + nWarningCount);
@@ -227,9 +227,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
     	MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
 		Integer projectId = null;
 		
-		Map<Integer, String> sampleIdToIndividualMap = new HashMap<>();
 		for (GenotypingSample sample : samplesToExport) {
-		    sampleIdToIndividualMap.put(sample.getId(), sample.getIndividual());
 			if (projectId == null)
 				projectId = sample.getProjectId();
 			else if (projectId != sample.getProjectId())
@@ -304,7 +302,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		writer.writeHeader(header);
 
 		HashMap<Integer, Object /*phID*/> phasingIDsBySample = new HashMap<>();
-		
+
 		final VariantContextWriter finalVariantContextWriter = writer;
 //		AtomicLong timeConverting = new AtomicLong(0), timeWriting = new AtomicLong(0);
 		AbstractExportWritingThread writingThread = new AbstractExportWritingThread() {
@@ -322,12 +320,6 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 					String variantId = null;
 					try
 					{
-//		                if (markerSynonyms != null) {
-//		                	String syn = markerSynonyms.get(idOfVarToWrite);
-//		                    if (syn != null)
-//		                    	idOfVarToWrite = syn;
-//		                }
-	
 						variantId = idOfVarToWrite;						
 		                if (markerSynonyms != null) {
 		                	String syn = markerSynonyms.get(variantId);
@@ -351,7 +343,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				}
 			}
 		};
-		
+
 		int nQueryChunkSize = IExportHandler.computeQueryChunkSize(mongoTemplate, markerCount);
         String usedCollName = tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantRunData.class);
 		MongoCollection collWithPojoCodec = mongoTemplate.getDb().withCodecRegistry(ExportManager.pojoCodecRegistry).getCollection(usedCollName);

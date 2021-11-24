@@ -37,11 +37,14 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -136,7 +139,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 
         int nMarkerIndex = 0;
         ArrayList<Comparable> unassignedMarkers = new ArrayList<>();
-		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(mongoTemplate.getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class)), varQuery, nQueryChunkSize)) {
+		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(mongoTemplate.getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class)), varQuery, 50000)) {
             progress.addStep("Writing map file");
             progress.moveToNextStep();
 	        while (markerCursor.hasNext()) {
@@ -196,10 +199,9 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
         short nProgress = 0, nPreviousProgress = 0;
         
         int i = 0, nNConcurrentThreads = Math.max(1, Runtime.getRuntime().availableProcessors());	// use multiple threads so we can prepare several lines at once
-        HashMap<Integer, StringBuffer> individualLines = new HashMap<>(nNConcurrentThreads);
-        for (int j=0; j<nNConcurrentThreads; j++)
-        	individualLines.put(j, new StringBuffer());
+        HashMap<Integer, StringBuilder> individualLines = new HashMap<>(nNConcurrentThreads);
         final ArrayList<Thread> threadsToWaitFor = new ArrayList<>(nNConcurrentThreads);
+        final AtomicInteger initialStringBuilderCapacity = new AtomicInteger();
 
         try
         {
@@ -211,7 +213,12 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	            Thread thread = new Thread() {
 	                @Override
 	                public void run() {
-	    	        	StringBuffer indLine = individualLines.get(nThreadIndex);
+                        StringBuilder indLine = individualLines.get(nThreadIndex);
+                        if (indLine == null) {
+                            indLine = new StringBuilder((int) f.length() / 3 /* rough estimation */);
+                            individualLines.put(nThreadIndex, indLine);
+                        }
+
 	                	BufferedReader in = null;
 	    	            try {
 		    	            in = new BufferedReader(new FileReader(f));
@@ -220,34 +227,46 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 			                    individualId = line;
 			                    String population = MgdbDao.getIndividualPopulation(sModule, line);
 			                    String individualInfo = (population == null ? "." : population) + " " + individualId;
-			                    indLine.append(individualInfo + " 0 0 0 " + getIndividualGenderCode(sModule, individualId));
+			                    indLine.append(individualInfo).append(" 0 0 0 ").append(getIndividualGenderCode(sModule, individualId));
 			                } else {
 			                    throw new Exception("Unable to read first line of temp export file " + f.getName());
 			                }
 			
 			                int nMarkerIndex = 0;
 			                while ((line = in.readLine()) != null) {
-			                    List<String> genotypes = Helper.split(line, "|");
-			                    HashMap<Object, Integer> genotypeCounts = new HashMap<>();	// will help us to keep track of missing genotypes
-			                    int highestGenotypeCount = 0;
-			                    String mostFrequentGenotype = null;
-			                    for (String genotype : genotypes) {
-			                        if (genotype.length() == 0)
-			                            continue;	/* skip missing genotypes */
-			
-			                        int gtCount = 1 + Helper.getCountForKey(genotypeCounts, genotype);
-			                        if (gtCount > highestGenotypeCount) {
-			                            highestGenotypeCount = gtCount;
-			                            mostFrequentGenotype = genotype;
-			                        }
-			                        genotypeCounts.put(genotype, gtCount);
-			                    }
-			
-			                    if (genotypeCounts.size() > 1) {
-			                    	if (warningFileWriter != null)
-			                    		warningFileWriter.write("- Dissimilar genotypes found for variant , individual " + individualId + ". Exporting most frequent: " + mostFrequentGenotype + "\n");
-			                        problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
-			                    }
+                                String mostFrequentGenotype = null;
+                                if (!line.isEmpty()) {
+                                    List<String> genotypes = Helper.split(line, "|");
+                                    if (genotypes.size() == 1)
+                                        mostFrequentGenotype = genotypes.get(0);
+                                    else {
+                                        HashMap<Object, Integer> genotypeCounts = new HashMap<Object, Integer>();   // will help us to keep track of missing genotypes
+                                        int highestGenotypeCount = 0;
+        
+                                        for (String genotype : genotypes) {
+                                            if (genotype == null) {
+                                                continue;   /* skip missing genotypes */
+                                            }
+                    
+                                            int gtCount = 1 + Helper.getCountForKey(genotypeCounts, genotype);
+                                            if (gtCount > highestGenotypeCount) {
+                                                highestGenotypeCount = gtCount;
+                                                mostFrequentGenotype = genotype;
+                                            }
+                                            genotypeCounts.put(genotype, gtCount);
+                                        }
+                    
+                                        if (genotypeCounts.size() > 1) {
+                                            List<Integer> reverseSortedGtCounts = genotypeCounts.values().stream().sorted(Comparator.reverseOrder()).collect(Collectors.toList());
+                                            if (reverseSortedGtCounts.get(0) == reverseSortedGtCounts.get(1))
+                                                mostFrequentGenotype = null;
+                                            if (warningFileWriter != null)
+                                                warningFileWriter.write("- Dissimilar genotypes found for variant n. " + nMarkerIndex + ", individual " + individualId + ". " + (mostFrequentGenotype == null ? "Exporting as missing data" : "Exporting most frequent: " + mostFrequentGenotype) + "\n");
+                                            if (mostFrequentGenotype == null)
+                                                problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
+                                        }
+                                    }
+                                }
 			
 			                    String[] alleles = mostFrequentGenotype == null ? new String[0] : mostFrequentGenotype.split(" ");
 			                    if (alleles.length > 2) {
@@ -258,7 +277,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 			
 			                    String all1 = alleles.length == 0 ? "0" : alleles[0];
 			                    String all2 = alleles.length == 0 ? "0" : alleles[alleles.length == 1 ? 0 : 1];
-		                        indLine.append(" " + all1 + " " + all2);
+		                        indLine.append(" ").append(all1).append(" ").append(all2);
 			
 			                    nMarkerIndex++;
 			                }
@@ -287,7 +306,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	                
 	                for (int j=0; j<nNConcurrentThreads; j++) {
 	                	os.write(individualLines.get(j).toString().getBytes());
-	                	individualLines.put(j, new StringBuffer());
+	                	individualLines.put(j, new StringBuilder(initialStringBuilderCapacity.get()));
 	                }
 
     	            nProgress = (short) (i * 100 / individualExportFiles.length);
