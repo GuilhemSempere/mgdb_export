@@ -173,19 +173,19 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 
 	                	String refAllele;
 						try {
-							refAllele = vrd.getKnownAlleleList().get(0);
+							refAllele = vrd.getKnownAlleles().iterator().next();
 						}
 						catch (IndexOutOfBoundsException ioobe) {	// VariantRunData's known-allele-list is not up to date
-							vrd.setKnownAlleleList(mongoTemplate.findById(vrd.getId().getVariantId(), VariantData.class).getKnownAlleleList());
+							vrd.setKnownAlleles(mongoTemplate.findById(vrd.getId().getVariantId(), VariantData.class).getKnownAlleles());
 							mongoTemplate.save(vrd);
-							refAllele = vrd.getKnownAlleleList().get(0);
+							refAllele = vrd.getKnownAlleles().iterator().next();
 						}
 		                String chrom = vrd.getReferencePosition() == null ? "0" : vrd.getReferencePosition().getSequence();
 		                long start = vrd.getReferencePosition() == null ? 0 : vrd.getReferencePosition().getStartSite();
 		                long end = Type.SNP.equals(vrd.getType()) ? start : start + refAllele.length() - 1;
 		                sb.append(chrom).append("\t").append(StringUtils.join(variantDataOrigin, ";") /*source*/).append("\t").append(typeToOntology.get(vrd.getType())).append("\t").append(start).append("\t").append(end).append("\t.\t+\t.\t");
 		                String syn = markerSynonyms == null ? null : markerSynonyms.get(vrd.getVariantId());
-		                sb.append("ID=").append(idOfVarToWrite).append(";").append((syn != null ? "Name=" + syn + ";" : "")).append("alleles=").append(StringUtils.join(vrd.getKnownAlleleList(), "/")).append(";").append("refallele=").append(refAllele).append(";");
+		                sb.append("ID=").append(idOfVarToWrite).append(";").append((syn != null ? "Name=" + syn + ";" : "")).append("alleles=").append(StringUtils.join(vrd.getKnownAlleles(), "/")).append(";").append("refallele=").append(refAllele).append(";");
 
 	            		HashMap<String, List<String>> genotypeStringCache = new HashMap<>();
 		                for (String individual : individualPositions.keySet() /* we use this list because it has the proper ordering */) {
@@ -206,7 +206,7 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 
 		                            int count = 0;
 		                            for (String allele : getAllelesFromGenotypeCodeUsingCache(genotype, genotypeStringCache, vrd, mongoTemplate)) {
-		                                for (String ka : vrd.getKnownAlleleList()) {
+		                                for (String ka : vrd.getKnownAlleles()) {
 		                                    if (allele.equals(ka) && !(compt.containsKey(ka))) {
 		                                        count++;
 		                                        compt.put(ka, count);

@@ -170,7 +170,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 		                boolean fIsSNP = vrd.getType().equals(Type.SNP.toString());
 
 		                ReferencePosition rp = vrd.getReferencePosition();
-		                sb.append(idOfVarToWrite).append("\t").append(StringUtils.join((vrd).getKnownAlleleList(), "/")).append("\t").append((rp == null ? 0 : rp.getSequence())).append("\t").append((rp == null ? 0 : rp.getStartSite())).append("\t").append("+\tNA\tNA\tNA\tNA\tNA\tNA");
+		                sb.append(idOfVarToWrite).append("\t").append(StringUtils.join(vrd.getKnownAlleles(), "/")).append("\t").append((rp == null ? 0 : rp.getSequence())).append("\t").append((rp == null ? 0 : rp.getStartSite())).append("\t").append("+\tNA\tNA\tNA\tNA\tNA\tNA");
 	
 		                LinkedHashSet<String>[] individualGenotypes = new LinkedHashSet[individualPositions.size()];
 

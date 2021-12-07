@@ -267,7 +267,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
                                     }
                                 }
         
-                                if (fFirstLoopExecution && vrd.getKnownAlleleList().size() > 2) {
+                                if (fFirstLoopExecution && vrd.getKnownAlleles().size() > 2) {
                                     warningFileWriter.write("- Variant " + vrd.getId() + " is multi-allelic. Make sure Eigenstrat genotype encoding specifications are suitable for you.\n");
                                 }
                                 sb.append(nOutputCode);
