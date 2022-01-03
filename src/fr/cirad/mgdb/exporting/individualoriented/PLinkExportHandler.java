@@ -271,7 +271,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 			                    String[] alleles = mostFrequentGenotype == null ? new String[0] : mostFrequentGenotype.split(" ");
 			                    if (alleles.length > 2) {
 			                    	if (warningFileWriter != null)
-			                    		warningFileWriter.write("- More than 2 alleles found for variant , individual " + individualId + ". Exporting only the first 2 alleles.\n");
+			                    		warningFileWriter.write("- More than 2 alleles found for variant n. " + nMarkerIndex + ", individual " + individualId + ". Exporting only the first 2 alleles.\n");
 			                        problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
 			                    }
 			
