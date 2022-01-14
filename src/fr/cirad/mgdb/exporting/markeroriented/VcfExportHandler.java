@@ -371,4 +371,9 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 	public String[] getExportDataFileExtensions() {
 		return new String[] {"vcf"};
 	}
+
+    @Override
+    public int[] getSupportedPloidyLevels() {
+        return null;
+    }
 }

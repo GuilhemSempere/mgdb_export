@@ -341,4 +341,9 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	public String[] getExportDataFileExtensions() {
 		return new String[] {"ped", "map"};
 	}
+
+    @Override
+    public int[] getSupportedPloidyLevels() {
+        return new int[] {2};
+    }
 }

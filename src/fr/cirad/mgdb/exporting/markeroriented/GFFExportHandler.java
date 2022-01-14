@@ -179,7 +179,7 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 							refAllele = vrd.getKnownAlleleList().get(0);
 						}
 						catch (IndexOutOfBoundsException ioobe) {	// VariantRunData's known-allele-list is not up to date
-							vrd.setKnownAlleleList(mongoTemplate.findById(vrd.getId().getVariantId(), VariantData.class).getKnownAlleleList());
+							vrd.setKnownAlleles(mongoTemplate.findById(vrd.getId().getVariantId(), VariantData.class).getKnownAlleles());
 							mongoTemplate.save(vrd);
 							refAllele = vrd.getKnownAlleleList().get(0);
 						}
@@ -316,4 +316,9 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 	public String[] getExportDataFileExtensions() {
 		return new String[] {"gff3"};
 	}
+
+    @Override
+    public int[] getSupportedPloidyLevels() {
+        return null;
+    }
 }

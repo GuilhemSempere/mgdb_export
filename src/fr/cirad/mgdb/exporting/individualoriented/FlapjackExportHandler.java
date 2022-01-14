@@ -359,4 +359,9 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
 	public String getExportContentType() {
 		return "application/x-fjzip";
 	}
+
+    @Override
+    public int[] getSupportedPloidyLevels() {
+        return null;
+    }
 }

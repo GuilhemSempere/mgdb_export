@@ -279,4 +279,9 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 	public String[] getExportDataFileExtensions() {
 		return new String[] {"hapmap"};
 	}
+
+    @Override
+    public int[] getSupportedPloidyLevels() {
+        return null;
+    }
 }

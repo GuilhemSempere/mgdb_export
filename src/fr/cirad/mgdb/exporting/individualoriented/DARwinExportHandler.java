@@ -332,4 +332,9 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 	public String[] getExportDataFileExtensions() {
 		return new String[] {"don", "var"};
 	}
+
+    @Override
+    public int[] getSupportedPloidyLevels() {
+        return null;
+    }
 }
