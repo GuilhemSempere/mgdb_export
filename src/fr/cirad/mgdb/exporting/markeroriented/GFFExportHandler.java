@@ -131,14 +131,15 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 		
 		AbstractExportWritingThread writingThread = new AbstractExportWritingThread() {
 			public void run() {
-				for (List<VariantRunData> runsToWrite : markerRunsToWrite) {
+				for (Collection<VariantRunData> runsToWrite : markerRunsToWrite) {
 					if (progress.isAborted() || progress.getError() != null)
 						return;
 
 					if (runsToWrite == null || runsToWrite.isEmpty())
 						continue;
 					
-					String idOfVarToWrite = runsToWrite.get(0).getVariantId();
+                    VariantRunData vrd = runsToWrite.iterator().next();
+					String idOfVarToWrite = vrd.getVariantId();
 					
 					List<String> variantDataOrigin = new ArrayList<>();
 					StringBuilder sb = new StringBuilder(initialStringBuilderCapacity.get() == 0 ? 3 * individualPositions.size() /* rough estimation */ : initialStringBuilderCapacity.get());
@@ -150,7 +151,6 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 		                    	idOfVarToWrite = syn;
 		                }
 
-		                VariantRunData vrd = runsToWrite.get(0);	
 		                LinkedHashSet<String>[] individualGenotypes = new LinkedHashSet[individualPositions.size()];
 	                	for (VariantRunData run : runsToWrite) {
 	                    	for (Integer sampleId : run.getSampleGenotypes().keySet()) {

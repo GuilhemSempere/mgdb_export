@@ -304,18 +304,13 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		HashMap<Integer, Object /*phID*/> phasingIDsBySample = new HashMap<>();
 
 		final VariantContextWriter finalVariantContextWriter = writer;
-//		AtomicLong timeConverting = new AtomicLong(0), timeWriting = new AtomicLong(0);
 		AbstractExportWritingThread writingThread = new AbstractExportWritingThread() {
 			public void run() {
-				for (List<VariantRunData> runsToWrite : markerRunsToWrite) {
-					if (progress.isAborted() || progress.getError() != null)
+			    markerRunsToWrite.forEach(runsToWrite -> {
+					if (progress.isAborted() || progress.getError() != null || runsToWrite == null || runsToWrite.isEmpty())
 						return;
-
-					if (runsToWrite == null || runsToWrite.isEmpty())
-						continue;
 					
-//                    long b4 = System.currentTimeMillis();
-                    VariantRunData vrd = runsToWrite.get(0);
+                    VariantRunData vrd = runsToWrite.iterator().next();
 					String idOfVarToWrite = vrd.getVariantId();
 					String variantId = null;
 					try
@@ -327,12 +322,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		                        variantId = syn;
 		                }
 
-						VariantContext vc = vrd.toVariantContext(mongoTemplate, runsToWrite, !MgdbDao.idLooksGenerated(variantId), samplesToExport, individualPositions, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? variantId : markerSynonyms.get(variantId));
-//						timeConverting.addAndGet(System.currentTimeMillis() - b4);
-						
-//						b4 = System.currentTimeMillis();
-						finalVariantContextWriter.add(vc);
-//						timeWriting.addAndGet(System.currentTimeMillis() - b4);
+						finalVariantContextWriter.add(vrd.toVariantContext(mongoTemplate, runsToWrite, !MgdbDao.idLooksGenerated(variantId), samplesToExport, individualPositions, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? variantId : markerSynonyms.get(variantId)));
 					}
 					catch (Exception e)
 					{
@@ -340,7 +330,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 							LOG.debug("Unable to export " + idOfVarToWrite, e);
 						progress.setError("Unable to export " + idOfVarToWrite + ": " + e.getMessage());
 					}
-				}
+				});
 			}
 		};
 
@@ -349,9 +339,6 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		MongoCollection collWithPojoCodec = mongoTemplate.getDb().withCodecRegistry(ExportManager.pojoCodecRegistry).getCollection(usedCollName);
 		ExportManager exportManager = new ExportManager(mongoTemplate, collWithPojoCodec, VariantRunData.class, varQuery, samplesToExport, true, nQueryChunkSize, writingThread, markerCount, warningFileWriter, progress);
 		exportManager.readAndWrite();
-
-//		System.out.println("time spent converting: " + timeConverting.get());
-//		System.out.println("time spent writing: " + timeWriting.get());
 	}
     
 	@Override

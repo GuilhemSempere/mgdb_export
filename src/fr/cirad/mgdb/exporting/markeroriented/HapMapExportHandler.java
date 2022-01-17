@@ -149,14 +149,12 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 		AbstractExportWritingThread writingThread = new AbstractExportWritingThread() {
 			public void run() {				
                 HashMap<Object, Integer> genotypeCounts = new HashMap<Object, Integer>();	// will help us to keep track of missing genotypes
-                for (List<VariantRunData> runsToWrite : markerRunsToWrite) {
-					if (progress.isAborted() || progress.getError() != null)
+                markerRunsToWrite.forEach(runsToWrite -> {
+					if (progress.isAborted() || progress.getError() != null || runsToWrite == null || runsToWrite.isEmpty())
 						return;
 
-					if (runsToWrite == null || runsToWrite.isEmpty())
-						continue;
-
-					String idOfVarToWrite = runsToWrite.get(0).getVariantId();
+					VariantRunData vrd = runsToWrite.iterator().next();
+					String idOfVarToWrite = vrd.getVariantId();
 					StringBuilder sb = new StringBuilder(initialStringBuilderCapacity.get() == 0 ? 3 * individualPositions.size() /* rough estimation */ : initialStringBuilderCapacity.get());
 					try
 					{
@@ -166,7 +164,6 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 		                    	idOfVarToWrite = syn;
 		                }
 
-		                VariantRunData vrd = runsToWrite.get(0);
 		                boolean fIsSNP = vrd.getType().equals(Type.SNP.toString());
 
 		                ReferencePosition rp = vrd.getReferencePosition();
@@ -174,7 +171,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 	
 		                LinkedHashSet<String>[] individualGenotypes = new LinkedHashSet[individualPositions.size()];
 
-	                	for (VariantRunData run : runsToWrite) {
+	                	runsToWrite.forEach( run -> {
 	                    	for (Integer sampleId : run.getSampleGenotypes().keySet()) {
                                 String individualId = sampleIdToIndividualMap.get(sampleId);
                                 Integer individualIndex = individualPositions.get(individualId);
@@ -191,7 +188,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 									individualGenotypes[individualIndex] = new LinkedHashSet<String>();
 								individualGenotypes[individualIndex].add(gtCode);
 	                        }
-	                    }
+	                    });
 
 		                int writtenGenotypeCount = 0;
 		                
@@ -256,7 +253,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 							LOG.debug("Unable to export " + idOfVarToWrite, e);
 						progress.setError("Unable to export " + idOfVarToWrite + ": " + e.getMessage());
 					}
-				}
+				});
 			}
 		};
 

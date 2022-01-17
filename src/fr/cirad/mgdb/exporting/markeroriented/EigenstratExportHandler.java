@@ -179,38 +179,28 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
     		int nQueryChunkSize = IExportHandler.computeQueryChunkSize(mongoTemplate, markerCount);
     	    final AtomicInteger initialStringBuilderCapacity = new AtomicInteger();
     		
-//    		long b4 = System.currentTimeMillis();
     		AbstractExportWritingThread writingThread = new AbstractExportWritingThread() {
     			public void run() {
-//    				long b4 = System.currentTimeMillis();
-//    				String id = markerRunsToWrite.keySet().iterator().next();
-//    				System.out.println("writing " + id);
-    				
-    				for (List<VariantRunData> runsToWrite : markerRunsToWrite) {
-    					if (progress.isAborted() || progress.getError() != null)
-    						return;
-
-						if (runsToWrite == null || runsToWrite.isEmpty())
-							continue;
+                    markerRunsToWrite.forEach(runsToWrite -> {
+    					if (progress.isAborted() || progress.getError() != null || runsToWrite == null || runsToWrite.isEmpty())
+							return;
     					
-    					String idOfVarToWrite = runsToWrite.get(0).getVariantId();
+                        VariantRunData vrd = runsToWrite.iterator().next();
+    					String idOfVarToWrite = vrd.getVariantId();
     					StringBuilder sb = new StringBuilder(initialStringBuilderCapacity.get() == 0 ? 3 * individualPositions.size() /* rough estimation */ : initialStringBuilderCapacity.get());
     					try
     					{
-//    						long b4 = System.currentTimeMillis();
-    						
     		                if (markerSynonyms != null) {
     		                	String syn = markerSynonyms.get(idOfVarToWrite);
     		                    if (syn != null)
     		                    	idOfVarToWrite = syn;
     		                }
 
-    		                VariantRunData vrd = runsToWrite.get(0);
     		                ReferencePosition rp = vrd.getReferencePosition();
     	                    snpFileWriter.write(idOfVarToWrite + "\t" + (rp == null ? 0 : rp.getSequence()) + "\t" + 0 + "\t" + (rp == null ? 0 : rp.getStartSite()) + LINE_SEPARATOR);
 
     		                LinkedHashSet<String>[] individualGenotypes = new LinkedHashSet[individualPositions.size()];
-    	                	for (VariantRunData run : runsToWrite) {
+    		                runsToWrite.forEach(run -> {
     	                    	for (Integer sampleId : run.getSampleGenotypes().keySet()) {
                                     String individualId = sampleIdToIndividualMap.get(sampleId);
                                     Integer individualIndex = individualPositions.get(individualId);
@@ -227,7 +217,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
     									individualGenotypes[individualIndex] = new LinkedHashSet<String>();
     								individualGenotypes[individualIndex].add(gtCode);
     	                        }
-    	                    }
+    	                    });
 
     	                    boolean fFirstLoopExecution = true;
     		                for (String individual : individualPositions.keySet() /* we use this list because it has the proper ordering */) {
@@ -293,9 +283,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
     							LOG.debug("Unable to export " + idOfVarToWrite, e);
     						progress.setError("Unable to export " + idOfVarToWrite + ": " + e.getMessage());
     					}
-    				}
-//    				long duration = System.currentTimeMillis() - b4;
-//    				System.out.println("wrote " + id + " in " + duration + "ms");
+    				});
     			}
     		};
 
