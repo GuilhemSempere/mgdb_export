@@ -32,7 +32,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-//import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -59,6 +61,7 @@ import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
 import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
 import fr.cirad.mgdb.model.mongodao.MgdbDao;
 import fr.cirad.tools.AlphaNumericComparator;
+import fr.cirad.tools.Helper;
 import fr.cirad.tools.ProgressIndicator;
 import fr.cirad.tools.mongo.MongoTemplateManager;
 import htsjdk.samtools.SAMSequenceDictionary;
@@ -306,31 +309,57 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		final VariantContextWriter finalVariantContextWriter = writer;
 		AbstractExportWritingThread writingThread = new AbstractExportWritingThread() {
 			public void run() {
-			    markerRunsToWrite.forEach(runsToWrite -> {
-					if (progress.isAborted() || progress.getError() != null || runsToWrite == null || runsToWrite.isEmpty())
-						return;
-					
-                    VariantRunData vrd = runsToWrite.iterator().next();
-					String idOfVarToWrite = vrd.getVariantId();
-					String variantId = null;
-					try
-					{
-						variantId = idOfVarToWrite;						
-		                if (markerSynonyms != null) {
-		                	String syn = markerSynonyms.get(variantId);
-		                    if (syn != null)
-		                        variantId = syn;
-		                }
+			    List<Collection<Collection<VariantRunData>>> splitVrdColls = Helper.evenlySplitCollection(markerRunsToWrite, Runtime.getRuntime().availableProcessors() - 1);
+                VariantContext[][] vcChunks = new VariantContext[splitVrdColls.size()][];
+		        ExecutorService executor = Executors.newFixedThreadPool(vcChunks.length);
+		        for (int i=0; i<vcChunks.length; i++) {
+		            final Collection<Collection<VariantRunData>> vrdCollChunk = splitVrdColls.get(i);
+		            final int nChunkIndex = i;
+		            Thread t = new Thread() {
+		                public void run() {
+                            vcChunks[nChunkIndex] = new VariantContext[vrdCollChunk.size()];		                    
+                            int nVariantIndex = 0;
+		                    for (Collection<VariantRunData> runsToWrite : vrdCollChunk) {
+		                    
+            					if (progress.isAborted() || progress.getError() != null || runsToWrite == null || runsToWrite.isEmpty())
+            						return;
 
-						finalVariantContextWriter.add(vrd.toVariantContext(mongoTemplate, runsToWrite, !MgdbDao.idLooksGenerated(variantId), samplesToExport, individualPositions, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? variantId : markerSynonyms.get(variantId)));
-					}
-					catch (Exception e)
-					{
-						if (progress.getError() == null)	// only log this once
-							LOG.debug("Unable to export " + idOfVarToWrite, e);
-						progress.setError("Unable to export " + idOfVarToWrite + ": " + e.getMessage());
-					}
-				});
+                                VariantRunData vrd = runsToWrite.iterator().next();
+            					String idOfVarToWrite = vrd.getVariantId();
+            					String variantId = null;
+            					try
+            					{
+            						variantId = idOfVarToWrite;						
+            		                if (markerSynonyms != null) {
+            		                	String syn = markerSynonyms.get(variantId);
+            		                    if (syn != null)
+            		                        variantId = syn;
+            		                }
+            		                vcChunks[nChunkIndex][nVariantIndex++] = vrd.toVariantContext(mongoTemplate, runsToWrite, !MgdbDao.idLooksGenerated(variantId), samplesToExport, individualPositions, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? variantId : markerSynonyms.get(variantId));
+            					}
+            					catch (Exception e)
+            					{
+            						if (progress.getError() == null)	// only log this once
+            							LOG.debug("Unable to export " + idOfVarToWrite, e);
+            						progress.setError("Unable to export " + idOfVarToWrite + ": " + e.getMessage());
+            					}
+		                    }
+		                }
+		            };
+		            executor.execute(t);
+		        }
+
+		        executor.shutdown();
+		        try {
+                    executor.awaitTermination(Integer.MAX_VALUE, TimeUnit.DAYS);
+                } catch (InterruptedException e) {
+                    progress.setError(e.getMessage());
+                    LOG.error("Error exporting VCF", e);
+                }
+		        
+		        for (VariantContext[] vcChunk : vcChunks)
+		            for (VariantContext vc : vcChunk)
+		                    finalVariantContextWriter.add(vc);
 			}
 		};
 
@@ -340,8 +369,8 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		ExportManager exportManager = new ExportManager(mongoTemplate, collWithPojoCodec, VariantRunData.class, varQuery, samplesToExport, true, nQueryChunkSize, writingThread, markerCount, warningFileWriter, progress);
 		exportManager.readAndWrite();
 	}
-    
-	@Override
+
+    @Override
 	public String[] getExportDataFileExtensions() {
 		return new String[] {"vcf"};
 	}
