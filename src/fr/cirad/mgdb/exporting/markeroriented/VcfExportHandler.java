@@ -130,10 +130,9 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		if (mongoTemplate.collectionExists(MongoTemplateManager.getMongoCollectionName(Sequence.class))) {
 			long before = System.currentTimeMillis();
 			Query query = sequenceIDs.isEmpty() ? new Query() : new Query(Criteria.where("_id").in(sequenceIDs));
-		
-			query.fields().include(Sequence.FIELDNAME_LENGTH);
+			query.fields().include(Sequence.FIELDNAME_LENGTH).include(Sequence.FIELDNAME_ASSEMBLY);
 			for (Sequence seq : MongoTemplateManager.get(sModule).find(query, Sequence.class))
-				dict1.addSequence(new SAMSequenceRecord((String) seq.getId(), (int) seq.getLength()));
+				dict1.addSequence(new SAMSequenceRecord((String) seq.getId(), (int) seq.getLength()) {{setAssembly(seq.getAssembly());}} );
 	    	LOG.info("createSAMSequenceDictionary took " + (System.currentTimeMillis() - before)/1000d + "s to write " + sequenceIDs.size() + " sequences");
 		}
 		else
@@ -280,21 +279,25 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		boolean fCollectionExists = mongoTemplate.collectionExists(sequenceInfoCollName);
 		for (String sequenceName : distinctSequenceNames) {
 			Map<String, String> sequenceLineData = new LinkedHashMap<String, String>();
-			if (fCollectionExists) {
+			if (fCollectionExists) { /* this should not happen anymore (relates to Gigwa V1's contig management section) */
 				Document record = mongoTemplate.getCollection(sequenceInfoCollName).find(new Query(Criteria.where("_id").is(sequenceName)).getQueryObject()).projection(new Document(SequenceStats.FIELDNAME_SEQUENCE_LENGTH, true)).first();
 				if (record == null) {
 					LOG.warn("Sequence '" + sequenceName + "' not found in collection " + sequenceInfoCollName);
 					continue;
 				}
-
 				sequenceLineData.put("ID", (String) record.get("_id"));
 				sequenceLineData.put("length", ((Number) record.get(SequenceStats.FIELDNAME_SEQUENCE_LENGTH)).toString());
 			}
 			else {
 				sequenceLineData.put("ID", sequenceName);
 				SAMSequenceRecord dictSeq = dict.getSequence(sequenceName); 
-				if (dictSeq != null && dictSeq.getSequenceLength() > 0)
-					sequenceLineData.put("length", "" + dict.getSequence(sequenceName).getSequenceLength());
+				if (dictSeq != null) {
+				    if (dictSeq.getSequenceLength() > 0)
+	                    sequenceLineData.put("length", "" + dict.getSequence(sequenceName).getSequenceLength());
+				    String sAssembly = dictSeq.getAssembly();
+                    if (sAssembly != null)
+                        sequenceLineData.put("assembly", sAssembly);
+				}
 			}
 			headerLines.add(new VCFContigHeaderLine(sequenceLineData, nSequenceIndex++));
 		}
