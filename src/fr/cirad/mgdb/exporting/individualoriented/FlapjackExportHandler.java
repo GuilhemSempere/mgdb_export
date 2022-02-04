@@ -87,7 +87,7 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
     }
 
     @Override
-    public void exportData(OutputStream outputStream, String sModule, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, Collection<String> individualsToExport, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
         File warningFile = File.createTempFile("export_warnings_", "");
         FileWriter warningFileWriter = new FileWriter(warningFile);
 
@@ -268,22 +268,14 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
                                     }
                                 }
             
-                                String[] alleles = mostFrequentGenotype == null ? new String[0] : mostFrequentGenotype.split(" ");
-                                if (alleles.length > 2) {
-                                    if (warningFileWriter != null)
-                                        warningFileWriter.write("- More than 2 alleles found for variant n. " + nMarkerIndex + ", individual " + individualId + ". Exporting only the first 2 alleles.\n");
-                                    problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
-                                }
-
-                                if (alleles.length == 0 || (alleles.length == 1 && alleles[0].length() == 0))
+                                List<String> alleles = mostFrequentGenotype == null ? new ArrayList<>() : Helper.split(mostFrequentGenotype, " ");
+                                if (alleles.size() == 0 || (alleles.size() == 1 && alleles.get(0).length() == 0))
                                     indLine.append("\t-");
                                 else
                                 {
-                                    String all1 = alleles[0];
-                                    String all2 = alleles[alleles.length == 1 ? 0 : 1];
-                                    indLine.append("\t").append(all1);
-                                    if (!all2.equals(all1))
-                                        indLine.append("/").append(all2);
+                                    boolean fHomozygous = alleles.stream().distinct().count() == 1;
+                                    for (int i=0; i<(fHomozygous ? 1 : alleles.size()); i++)
+                                        indLine.append(i == 0 ? "\t" : "/").append(alleles.get(i));
                                 }
 
                                 nMarkerIndex++;

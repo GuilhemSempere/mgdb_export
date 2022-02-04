@@ -362,7 +362,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		        
 		        for (VariantContext[] vcChunk : vcChunks)
 		            for (VariantContext vc : vcChunk)
-		                    finalVariantContextWriter.add(vc);
+	                    finalVariantContextWriter.add(vc);
 			}
 		};
 

@@ -294,9 +294,12 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
             if (unassignedMarkers.size() > 0)
             	LOG.info("No chromosomal position found for " + unassignedMarkers.size() + " markers " + StringUtils.join(unassignedMarkers, ", "));
             
+            progress.addStep("Generating .ind file");
+            progress.moveToNextStep();
             StringBuilder indFileContents = new StringBuilder(individualPositions.size() * 10);
+            Map<String, String> individualPops = MgdbDao.getIndividualPopulations(sModule, individualPositions.keySet());
             for (String individual : individualPositions.keySet()) {
-            	String pop = MgdbDao.getIndividualPopulation(sModule, individual);
+            	String pop = individualPops.get(individual);
                 indFileContents.append(individual).append("\t").append(getIndividualGenderCode(sModule, individual)).append("\t").append((pop == null ? "." : pop)).append(LINE_SEPARATOR);
             }
 
