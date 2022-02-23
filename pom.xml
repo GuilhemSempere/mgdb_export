@@ -2,8 +2,8 @@
     <modelVersion>4.0.0</modelVersion>
     
     <properties>
-	    <project.version>2.4.1-RELEASE</project.version>
-	    <mgdb.version>2.4.1-RELEASE</mgdb.version>
+	    <project.version>2.5-alpha</project.version>
+	    <mgdb.version>2.5-alpha</mgdb.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>

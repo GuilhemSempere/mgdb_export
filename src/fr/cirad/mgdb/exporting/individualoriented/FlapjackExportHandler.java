@@ -306,7 +306,10 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
                         t.join();
                     
                     for (int j=0; j<nNConcurrentThreads; j++) {
-                        os.write(individualLines.get(j).toString().getBytes());
+                        StringBuilder indLine = individualLines.get(j);
+                        if (indLine == null)
+                            LOG.warn("No line to export for individual " + j);
+                        os.write(indLine.toString().getBytes());
                         individualLines.put(j, new StringBuilder(initialStringBuilderCapacity.get()));
                     }
 
