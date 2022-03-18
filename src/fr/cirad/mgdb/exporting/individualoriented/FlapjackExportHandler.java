@@ -208,6 +208,7 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
 
         try
         {
+            int nWrittenIndividualCount = 0;
             for (final File f : individualExportFiles) {
                 if (progress.isAborted() || progress.getError() != null)
                     return null;
@@ -305,12 +306,14 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
                     for (Thread t : threadsToWaitFor) // wait for all previously launched async threads
                         t.join();
                     
-                    for (int j=0; j<nNConcurrentThreads; j++) {
+                    for (int j=0; j<nNConcurrentThreads && nWrittenIndividualCount++ < individualExportFiles.length; j++) {
                         StringBuilder indLine = individualLines.get(j);
-                        if (indLine == null)
+                        if (indLine == null || indLine.isEmpty())
                             LOG.warn("No line to export for individual " + j);
-                        os.write(indLine.toString().getBytes());
-                        individualLines.put(j, new StringBuilder(initialStringBuilderCapacity.get()));
+                        else {
+                            os.write(indLine.toString().getBytes());
+                            individualLines.put(j, new StringBuilder(initialStringBuilderCapacity.get()));
+                        }
                     }
 
                     nProgress = (short) (i * 100 / individualExportFiles.length);

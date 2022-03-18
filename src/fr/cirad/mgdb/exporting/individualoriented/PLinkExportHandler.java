@@ -206,6 +206,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 
         try
         {
+            int nWrittenIndividualCount = 0;
 	        for (final File f : individualExportFiles) {
 	            if (progress.isAborted() || progress.getError() != null)
 	            	return null;
@@ -305,10 +306,15 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	                for (Thread t : threadsToWaitFor) // wait for all previously launched async threads
 	               		t.join();
 	                
-	                for (int j=0; j<nNConcurrentThreads; j++) {
-	                	os.write(individualLines.get(j).toString().getBytes());
-	                	individualLines.put(j, new StringBuilder(initialStringBuilderCapacity.get()));
-	                }
+                    for (int j=0; j<nNConcurrentThreads && nWrittenIndividualCount++ < individualExportFiles.length; j++) {
+                        StringBuilder indLine = individualLines.get(j);
+                        if (indLine == null || indLine.isEmpty())
+                            LOG.warn("No line to export for individual " + j);
+                        else {
+                            os.write(indLine.toString().getBytes());
+                            individualLines.put(j, new StringBuilder(initialStringBuilderCapacity.get()));
+                        }
+                    }
 
     	            nProgress = (short) (i * 100 / individualExportFiles.length);
     	            if (nProgress > nPreviousProgress) {

@@ -110,7 +110,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
         File warningFile = File.createTempFile("export_warnings_", "");
         FileWriter warningFileWriter = new FileWriter(warningFile);
 
-        ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
+        ZipOutputStream os = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
         String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.length + "individuals";
         
         String missingGenotype = "";
@@ -118,8 +118,8 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
             missingGenotype += "\tN";
         String finalMissingGenotype = missingGenotype;
 
-        zos.putNextEntry(new ZipEntry(exportName + ".var"));
-        zos.write(("@DARwin 5.0 - ALLELIC - " + ploidy + LINE_SEPARATOR + individualExportFiles.length + "\t" + markerCount * ploidy + LINE_SEPARATOR + "N°").getBytes());
+        os.putNextEntry(new ZipEntry(exportName + ".var"));
+        os.write(("@DARwin 5.0 - ALLELIC - " + ploidy + LINE_SEPARATOR + individualExportFiles.length + "\t" + markerCount * ploidy + LINE_SEPARATOR + "N°").getBytes());
 
         short nProgress = 0, nPreviousProgress = 0;
         MongoCollection<Document> varColl = mongoTemplate.getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class));
@@ -137,7 +137,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
                     }
                 }
                 for (int j = 0; j < ploidy; j++) {
-                    zos.write(("\t" + markerId).getBytes());
+                    os.write(("\t" + markerId).getBytes());
                 }
             }
         }
@@ -160,6 +160,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
         final AtomicInteger initialStringBuilderCapacity = new AtomicInteger();
         
         try {
+            int nWrittenIndividualCount = 0;
             for (final File f : individualExportFiles) {
                 if (progress.isAborted() || progress.getError() != null)
                     return;
@@ -265,9 +266,14 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
                     for (Thread t : threadsToWaitFor) // wait for all previously launched async threads
                            t.join();
                     
-                    for (int j=0; j<nNConcurrentThreads; j++) {
-                        zos.write(individualLines.get(j).toString().getBytes());
-                        individualLines.put(j, new StringBuilder(initialStringBuilderCapacity.get()));
+                    for (int j=0; j<nNConcurrentThreads && nWrittenIndividualCount++ < individualExportFiles.length; j++) {
+                        StringBuilder indLine = individualLines.get(j);
+                        if (indLine == null || indLine.isEmpty())
+                            LOG.warn("No line to export for individual " + j);
+                        else {
+                            os.write(indLine.toString().getBytes());
+                            individualLines.put(j, new StringBuilder(initialStringBuilderCapacity.get()));
+                        }
                     }
 
                     nProgress = (short) (i * 100 / individualExportFiles.length);
@@ -288,15 +294,15 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
                     LOG.info("Unable to delete tmp export file " + f.getAbsolutePath());
                 }
         }
-        zos.closeEntry();
+        os.closeEntry();
 
-        zos.putNextEntry(new ZipEntry(exportName + ".don"));
+        os.putNextEntry(new ZipEntry(exportName + ".don"));
         String donFileHeader = "@DARwin 5.0 - DON -" + LINE_SEPARATOR + individualExportFiles.length + "\t" + (1 + individualMetadataFieldsToExport.size()) + LINE_SEPARATOR + "N°" + "\t" + "individual";
         for (String header : individualMetadataFieldsToExport)
             donFileHeader += "\t" + header;
-        zos.write((donFileHeader + LINE_SEPARATOR).getBytes());
+        os.write((donFileHeader + LINE_SEPARATOR).getBytes());
         for (String donIndLine : donFileContents)
-            zos.write(donIndLine.getBytes());
+            os.write(donIndLine.getBytes());
 
 //        // now read variant names for those that induced warnings
 //        int nMarkerIndex = 0;
@@ -318,29 +324,29 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 //                }
 //            }
 //        }
-        zos.closeEntry();
+        os.closeEntry();
 
         warningFileWriter.close();
         if (warningFile.length() > 0) {
             progress.addStep("Adding lines to warning file");
             progress.moveToNextStep();
             progress.setPercentageEnabled(false);
-            zos.putNextEntry(new ZipEntry(exportName + "-REMARKS.txt"));
+            os.putNextEntry(new ZipEntry(exportName + "-REMARKS.txt"));
             int nWarningCount = 0;
             BufferedReader in = new BufferedReader(new FileReader(warningFile));
             String sLine;
             while ((sLine = in.readLine()) != null) {
-                zos.write((sLine + "\n").getBytes());
+                os.write((sLine + "\n").getBytes());
                 progress.setCurrentStepProgress(nWarningCount++);
             }
             LOG.info("Number of Warnings for export (" + exportName + "): " + nWarningCount);
             in.close();
-            zos.closeEntry();
+            os.closeEntry();
         }
         warningFile.delete();
 
-        zos.finish();
-        zos.close();
+        os.finish();
+        os.close();
         progress.setPercentageEnabled(true);
         progress.setCurrentStepProgress((short) 100);
     }
