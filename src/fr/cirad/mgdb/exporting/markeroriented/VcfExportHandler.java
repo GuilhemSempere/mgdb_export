@@ -312,6 +312,9 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		final VariantContextWriter finalVariantContextWriter = writer;
 		AbstractExportWritingThread writingThread = new AbstractExportWritingThread() {
 			public void run() {
+				if (markerRunsToWrite.isEmpty())
+					return;
+
 			    List<Collection<Collection<VariantRunData>>> splitVrdColls = Helper.evenlySplitCollection(markerRunsToWrite, Runtime.getRuntime().availableProcessors() - 1);
                 VariantContext[][] vcChunks = new VariantContext[splitVrdColls.size()][];
 		        ExecutorService executor = Executors.newFixedThreadPool(vcChunks.length);
