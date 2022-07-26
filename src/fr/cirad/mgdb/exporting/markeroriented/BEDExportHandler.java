@@ -89,44 +89,34 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
 		short nProgress = 0, nPreviousProgress = 0;
 		int nQueryChunkSize = (int) Math.min(2000, markerCount), nLoadedMarkerCount = 0;
-		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(mongoTemplate.getDb().withCodecRegistry(ExportManager.pojoCodecRegistry).getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class)), varQuery, nQueryChunkSize)) {
+		Document projectionDoc = new Document(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ReferencePosition.FIELDNAME_SEQUENCE, 1)
+				.append(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ReferencePosition.FIELDNAME_START_SITE, 1)
+				.append(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ReferencePosition.FIELDNAME_END_SITE, 1);
+		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(mongoTemplate.getDb().withCodecRegistry(ExportManager.pojoCodecRegistry).getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class)), varQuery, projectionDoc, nQueryChunkSize)) {
 			while (markerCursor.hasNext())
 			{
-				int nLoadedMarkerCountInLoop = 0;
-				Map<String, String> markerChromosomalPositions = new LinkedHashMap<>();
-				boolean fStartingNewChunk = true;
-				while (markerCursor.hasNext() && (fStartingNewChunk || nLoadedMarkerCountInLoop%nQueryChunkSize != 0)) {
-					Document exportVariant = markerCursor.next();
-					Document refPos = (Document) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION);
-					markerChromosomalPositions.put((String) exportVariant.get("_id"), refPos == null ? null : (refPos.get(ReferencePosition.FIELDNAME_SEQUENCE) + ":" + refPos.get(ReferencePosition.FIELDNAME_START_SITE)));
-					nLoadedMarkerCountInLoop++;
-					fStartingNewChunk = false;
+				Document exportVariant = markerCursor.next();
+				Document refPos = (Document) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION);
+				String chrom = refPos == null ? null : (String) refPos.get(ReferencePosition.FIELDNAME_SEQUENCE);
+				if (chrom != null) {
+					Long pos = chrom == null ? null : ((Number) refPos.get(ReferencePosition.FIELDNAME_START_SITE)).longValue();
+					Number end = chrom == null ? null : (Number) refPos.get(ReferencePosition.FIELDNAME_END_SITE);
+					zos.write((chrom + "\t" + (pos - 1) + "\t" + ((end == null ? pos : end.longValue()) - 1) + "\t" + exportVariant.get("_id") + "\t" + "0" + "\t" + "+").getBytes());
 				}
-	
-				for (String variantId : markerChromosomalPositions.keySet())
-				{
-					String refPos = markerChromosomalPositions.get(variantId);
-					if (refPos != null)
-					{
-						String[] chromAndPos = refPos.split(":");
-						zos.write((chromAndPos[0] + "\t" + (Long.parseLong(chromAndPos[1])-1)  + "\t" + (Long.parseLong(chromAndPos[1])-1) + "\t" + variantId + "\t" + "0" + "\t" + "+").getBytes());
-					}
-					else
-						zos.write(("0\t0\t0\t" + variantId + "\t" + "0" + "\t" + "+").getBytes());
-					zos.write((LINE_SEPARATOR).getBytes());
-				}
+				else
+					zos.write(("0\t0\t0\t" + exportVariant.get("_id") + "\t" + "0" + "\t" + "+").getBytes());
+				zos.write((LINE_SEPARATOR).getBytes());
 				
-	            if (progress.isAborted())
-	            	return;
-	
-	            nLoadedMarkerCount += nLoadedMarkerCountInLoop;
+				nLoadedMarkerCount++;
 				nProgress = (short) (nLoadedMarkerCount * 100 / markerCount);
-				if (nProgress > nPreviousProgress)
-				{
+				if (nProgress > nPreviousProgress) {
 					progress.setCurrentStepProgress(nProgress);
 					nPreviousProgress = nProgress;
-				}	
-	        }
+				}
+			}
+
+            if (progress.isAborted())
+            	return;
 		}
 		zos.closeEntry();
 		zos.finish();

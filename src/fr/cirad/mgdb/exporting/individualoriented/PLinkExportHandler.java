@@ -146,9 +146,9 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	        while (markerCursor.hasNext()) {
 	            Document exportVariant = markerCursor.next();
 	            Document refPos = (Document) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION);
-	            Long pos = refPos == null ? null : ((Number) refPos.get(ReferencePosition.FIELDNAME_START_SITE)).longValue();
-	            String markerId = (String) exportVariant.get("_id");
 	            String chrom = refPos == null ? null : (String) refPos.get(ReferencePosition.FIELDNAME_SEQUENCE);
+	            Long pos = chrom == null ? null : ((Number) refPos.get(ReferencePosition.FIELDNAME_START_SITE)).longValue();
+	            String markerId = (String) exportVariant.get("_id");
 	            if (chrom == null)
 	            	unassignedMarkers.add(markerId);
 	            String exportedId = markerSynonyms == null ? markerId : markerSynonyms.get(markerId);

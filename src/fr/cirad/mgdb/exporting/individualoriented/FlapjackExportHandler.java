@@ -126,7 +126,7 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
                 Document refPos = (Document) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION);
                 String markerId = (String) exportVariant.get("_id");
                 String chrom = refPos == null ? null : (String) refPos.get(ReferencePosition.FIELDNAME_SEQUENCE);
-                Long pos = refPos == null ? null : ((Number) refPos.get(ReferencePosition.FIELDNAME_START_SITE)).longValue();
+                Long pos = chrom == null ? null : ((Number) refPos.get(ReferencePosition.FIELDNAME_START_SITE)).longValue();
                 if (chrom == null) 
                     unassignedMarkers.add(markerId);
     
