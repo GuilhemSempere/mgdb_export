@@ -110,7 +110,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	}
 
     @Override
-    public void exportData(OutputStream outputStream, String sModule, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, String sExportingUser, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
 		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         int nQueryChunkSize = IExportHandler.computeQueryChunkSize(mongoTemplate, markerCount);
         File warningFile = File.createTempFile("export_warnings_", "");
@@ -128,7 +128,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
         if (individualMetadataFieldsToExport != null && !individualMetadataFieldsToExport.isEmpty()) {
         	zos.putNextEntry(new ZipEntry(sModule + "__" + individualExportFiles.length + "individuals_metadata.tsv"));
         	zos.write("individual".getBytes());
-	        IExportHandler.writeMetadataFile(sModule, exportedIndividuals, individualMetadataFieldsToExport, zos);
+	        IExportHandler.writeMetadataFile(sModule, sExportingUser, exportedIndividuals, individualMetadataFieldsToExport, zos);
 	    	zos.closeEntry();
         }
         

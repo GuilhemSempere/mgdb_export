@@ -39,7 +39,9 @@ import java.util.zip.ZipOutputStream;
 import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 import org.bson.Document;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.security.core.Authentication;
 
 import com.mongodb.client.MongoCollection;
 
@@ -57,7 +59,7 @@ import fr.cirad.tools.AlphaNumericComparator;
 import fr.cirad.tools.Helper;
 import fr.cirad.tools.ProgressIndicator;
 import fr.cirad.tools.mongo.MongoTemplateManager;
-
+import fr.cirad.tools.security.base.AbstractTokenManager;
 import htsjdk.variant.variantcontext.VariantContext.Type;
 
 /**
@@ -69,6 +71,8 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
      * The Constant LOG.
      */
     private static final Logger LOG = Logger.getLogger(EigenstratExportHandler.class);
+    
+    @Autowired private AbstractTokenManager tokenManager;
 
     /**
      * The Constant EIGENSTRAT_FORMAT.
@@ -147,7 +151,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
 	 * @see fr.cirad.mgdb.exporting.markeroriented.AbstractMarkerOrientedExportHandler#exportData(java.io.OutputStream, java.lang.String, java.util.List, fr.cirad.tools.ProgressIndicator, com.mongodb.DBCursor, java.util.Map, int, int, java.util.Map)
      */
     @Override
-	public void exportData(OutputStream outputStream, String sModule, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
+	public void exportData(OutputStream outputStream, String sModule, String sExportingUser, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
         File warningFile = File.createTempFile("export_warnings_", "");
         FileWriter warningFileWriter = new FileWriter(warningFile);
         File snpFile = null;
@@ -169,13 +173,14 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
             if (individualMetadataFieldsToExport != null && !individualMetadataFieldsToExport.isEmpty()) {
             	zos.putNextEntry(new ZipEntry(sModule + "__" + individualPositions.size() + "individuals_metadata.tsv"));
             	zos.write("individual".getBytes());
-    	        IExportHandler.writeMetadataFile(sModule, individualPositions.keySet(), individualMetadataFieldsToExport, zos);
+    	        IExportHandler.writeMetadataFile(sModule, sExportingUser, individualPositions.keySet(), individualMetadataFieldsToExport, zos);
     	    	zos.closeEntry();
             }
             
             zos.putNextEntry(new ZipEntry(exportName + ".eigenstratgeno"));
             final Map<Integer, String> sampleIdToIndividualMap = samplesToExport.stream().collect(Collectors.toMap(GenotypingSample::getId, sp -> sp.getIndividual()));
             ArrayList<Comparable> unassignedMarkers = new ArrayList<>();
+
     		int nQueryChunkSize = IExportHandler.computeQueryChunkSize(mongoTemplate, markerCount);
     	    final AtomicInteger initialStringBuilderCapacity = new AtomicInteger();
     		

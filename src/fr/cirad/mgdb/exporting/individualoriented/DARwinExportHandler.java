@@ -55,6 +55,7 @@ import fr.cirad.mgdb.model.mongodao.MgdbDao;
 import fr.cirad.tools.Helper;
 import fr.cirad.tools.ProgressIndicator;
 import fr.cirad.tools.mongo.MongoTemplateManager;
+import fr.cirad.tools.security.base.AbstractTokenManager;
 
 /**
  * The Class DARwinExportHandler.
@@ -96,7 +97,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
     }
 
     @Override
-    public void exportData(OutputStream outputStream, String sModule, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, String sExportingUser, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
         MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         GenotypingProject aProject = mongoTemplate.findOne(new Query(Criteria.where(GenotypingProject.FIELDNAME_PLOIDY_LEVEL).exists(true)), GenotypingProject.class);
         if (aProject == null) {
@@ -145,7 +146,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
             try (Scanner scanner = new Scanner(indFile)) {
                 exportedIndividuals.add(scanner.nextLine());
             }
-        LinkedHashMap<String, Individual> indMap = MgdbDao.getInstance().loadIndividualsWithAllMetadata(sModule, IExportHandler.getLoggedUserName(), null, exportedIndividuals);
+        LinkedHashMap<String, Individual> indMap = MgdbDao.getInstance().loadIndividualsWithAllMetadata(sModule, sExportingUser, null, exportedIndividuals);
 
         TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = new TreeMap<Integer, Comparable>();
         ArrayList<String> distinctAlleles = new ArrayList<String>();    // the index of each allele will be used as its code
