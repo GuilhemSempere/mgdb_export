@@ -32,7 +32,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-//import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -60,6 +62,7 @@ import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
 import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
 import fr.cirad.mgdb.model.mongodao.MgdbDao;
 import fr.cirad.tools.AlphaNumericComparator;
+import fr.cirad.tools.Helper;
 import fr.cirad.tools.ProgressIndicator;
 import fr.cirad.tools.mongo.MongoTemplateManager;
 import htsjdk.samtools.SAMSequenceDictionary;
@@ -128,10 +131,9 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		if (mongoTemplate.collectionExists(MongoTemplateManager.getMongoCollectionName(Sequence.class))) {
 			long before = System.currentTimeMillis();
 			Query query = sequenceIDs.isEmpty() ? new Query() : new Query(Criteria.where("_id").in(sequenceIDs));
-		
-			query.fields().include(Sequence.FIELDNAME_LENGTH);
+			query.fields().include(Sequence.FIELDNAME_LENGTH).include(Sequence.FIELDNAME_ASSEMBLY);
 			for (Sequence seq : MongoTemplateManager.get(sModule).find(query, Sequence.class))
-				dict1.addSequence(new SAMSequenceRecord((String) seq.getId(), (int) seq.getLength()));
+				dict1.addSequence(new SAMSequenceRecord((String) seq.getId(), (int) seq.getLength()) {{setAssembly(seq.getAssembly());}} );
 	    	LOG.info("createSAMSequenceDictionary took " + (System.currentTimeMillis() - before)/1000d + "s to write " + sequenceIDs.size() + " sequences");
 		}
 		else
@@ -140,7 +142,11 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 	}
 
     @Override
+<<<<<<< HEAD
     public void exportData(OutputStream outputStream, String sModule, Integer nAssemblyId, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
+=======
+    public void exportData(OutputStream outputStream, String sModule, String sExportingUser, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
+>>>>>>> master
 		List<String> sortedIndividuals = samplesToExport.stream().map(gs -> gs.getIndividual()).distinct().sorted(new AlphaNumericComparator<String>()).collect(Collectors.toList());
 
 		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
@@ -154,7 +160,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
         if (individualMetadataFieldsToExport != null && !individualMetadataFieldsToExport.isEmpty()) {
         	zos.putNextEntry(new ZipEntry(sModule + "__" + sortedIndividuals.size() + "individuals_metadata.tsv"));
         	zos.write("individual".getBytes());
-	        IExportHandler.writeMetadataFile(sModule, sortedIndividuals, individualMetadataFieldsToExport, zos);
+	        IExportHandler.writeMetadataFile(sModule, sExportingUser, sortedIndividuals, individualMetadataFieldsToExport, zos);
 	    	zos.closeEntry();
         }
         
@@ -208,7 +214,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 				BufferedReader in = new BufferedReader(new FileReader(warningFile));
 				String sLine;
 				while ((sLine = in.readLine()) != null) {
-					outputStream.write((sLine + "\n").getBytes());
+					zos.write((sLine + "\n").getBytes());
 					nWarningCount++;
 				}
 				LOG.info("Number of Warnings for export (" + exportName + "): " + nWarningCount);
@@ -232,9 +238,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
     	MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
 		Integer projectId = null;
 		
-		Map<Integer, String> sampleIdToIndividualMap = new HashMap<>();
 		for (GenotypingSample sample : samplesToExport) {
-		    sampleIdToIndividualMap.put(sample.getId(), sample.getIndividual());
 			if (projectId == null)
 				projectId = sample.getProjectId();
 			else if (projectId != sample.getProjectId())
@@ -284,21 +288,25 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		boolean fCollectionExists = mongoTemplate.collectionExists(sequenceInfoCollName);
 		for (String sequenceName : distinctSequenceNames) {
 			Map<String, String> sequenceLineData = new LinkedHashMap<String, String>();
-			if (fCollectionExists) {
+			if (fCollectionExists) { /* this should not happen anymore (relates to Gigwa V1's contig management section) */
 				Document record = mongoTemplate.getCollection(sequenceInfoCollName).find(new Query(Criteria.where("_id").is(sequenceName)).getQueryObject()).projection(new Document(SequenceStats.FIELDNAME_SEQUENCE_LENGTH, true)).first();
 				if (record == null) {
 					LOG.warn("Sequence '" + sequenceName + "' not found in collection " + sequenceInfoCollName);
 					continue;
 				}
-
 				sequenceLineData.put("ID", (String) record.get("_id"));
 				sequenceLineData.put("length", ((Number) record.get(SequenceStats.FIELDNAME_SEQUENCE_LENGTH)).toString());
 			}
 			else {
 				sequenceLineData.put("ID", sequenceName);
 				SAMSequenceRecord dictSeq = dict.getSequence(sequenceName); 
-				if (dictSeq != null && dictSeq.getSequenceLength() > 0)
-					sequenceLineData.put("length", "" + dict.getSequence(sequenceName).getSequenceLength());
+				if (dictSeq != null) {
+				    if (dictSeq.getSequenceLength() > 0)
+	                    sequenceLineData.put("length", "" + dict.getSequence(sequenceName).getSequenceLength());
+				    String sAssembly = dictSeq.getAssembly();
+                    if (sAssembly != null)
+                        sequenceLineData.put("assembly", sAssembly);
+				}
 			}
 			headerLines.add(new VCFContigHeaderLine(sequenceLineData, nSequenceIndex++));
 		}
@@ -309,37 +317,54 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		writer.writeHeader(header);
 
 		HashMap<Integer, Object /*phID*/> phasingIDsBySample = new HashMap<>();
-		
+
 		final VariantContextWriter finalVariantContextWriter = writer;
-//		AtomicLong timeConverting = new AtomicLong(0), timeWriting = new AtomicLong(0);
 		AbstractExportWritingThread writingThread = new AbstractExportWritingThread() {
 			public void run() {
-				for (List<VariantRunData> runsToWrite : markerRunsToWrite) {
-					if (progress.isAborted() || progress.getError() != null)
-						return;
+				if (markerRunsToWrite.isEmpty())
+					return;
 
-					if (runsToWrite == null || runsToWrite.isEmpty())
-						continue;
-					
-//                    long b4 = System.currentTimeMillis();
-                    VariantRunData vrd = runsToWrite.get(0);
-					String idOfVarToWrite = vrd.getVariantId();
-					String variantId = null;
-					try
-					{
-//		                if (markerSynonyms != null) {
-//		                	String syn = markerSynonyms.get(idOfVarToWrite);
-//		                    if (syn != null)
-//		                    	idOfVarToWrite = syn;
-//		                }
-	
-						variantId = idOfVarToWrite;						
-		                if (markerSynonyms != null) {
-		                	String syn = markerSynonyms.get(variantId);
-		                    if (syn != null)
-		                        variantId = syn;
+			    List<Collection<Collection<VariantRunData>>> splitVrdColls = Helper.evenlySplitCollection(markerRunsToWrite, Runtime.getRuntime().availableProcessors() - 1);
+                VariantContext[][] vcChunks = new VariantContext[splitVrdColls.size()][];
+		        ExecutorService executor = Executors.newFixedThreadPool(vcChunks.length);
+		        for (int i=0; i<vcChunks.length; i++) {
+		            final Collection<Collection<VariantRunData>> vrdCollChunk = splitVrdColls.get(i);
+		            final int nChunkIndex = i;
+		            Thread t = new Thread() {
+		                public void run() {
+                            vcChunks[nChunkIndex] = new VariantContext[vrdCollChunk.size()];		                    
+                            int nVariantIndex = 0;
+		                    for (Collection<VariantRunData> runsToWrite : vrdCollChunk) {
+		                    
+            					if (progress.isAborted() || progress.getError() != null || runsToWrite == null || runsToWrite.isEmpty())
+            						return;
+
+                                VariantRunData vrd = runsToWrite.iterator().next();
+            					String idOfVarToWrite = vrd.getVariantId();
+            					String variantId = null;
+            					try
+            					{
+            						variantId = idOfVarToWrite;						
+            		                if (markerSynonyms != null) {
+            		                	String syn = markerSynonyms.get(variantId);
+            		                    if (syn != null)
+            		                        variantId = syn;
+            		                }
+            		                vcChunks[nChunkIndex][nVariantIndex++] = vrd.toVariantContext(mongoTemplate, runsToWrite, !MgdbDao.idLooksGenerated(variantId), samplesToExport, individualPositions, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? variantId : markerSynonyms.get(variantId));
+            					}
+            					catch (Exception e)
+            					{
+            						if (progress.getError() == null)	// only log this once
+            							LOG.debug("Unable to export " + idOfVarToWrite, e);
+            						progress.setError("Unable to export " + idOfVarToWrite + ": " + e.getMessage());
+            					}
+		                    }
 		                }
+		            };
+		            executor.execute(t);
+		        }
 
+<<<<<<< HEAD
 						VariantContext vc = vrd.toVariantContext(mongoTemplate, runsToWrite, nAssemblyId, !MgdbDao.idLooksGenerated(variantId), samplesToExport, individualPositions, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? variantId : markerSynonyms.get(variantId));
 //						timeConverting.addAndGet(System.currentTimeMillis() - b4);
 						
@@ -354,24 +379,38 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 						progress.setError("Unable to export " + idOfVarToWrite + ": " + e.getMessage());
 					}
 				}
+=======
+		        executor.shutdown();
+		        try {
+                    executor.awaitTermination(Integer.MAX_VALUE, TimeUnit.DAYS);
+                } catch (InterruptedException e) {
+                    progress.setError(e.getMessage());
+                    LOG.error("Error exporting VCF", e);
+                }
+		        
+		        for (VariantContext[] vcChunk : vcChunks)
+		            for (VariantContext vc : vcChunk)
+	                    finalVariantContextWriter.add(vc);
+>>>>>>> master
 			}
 		};
-		
+
 		int nQueryChunkSize = IExportHandler.computeQueryChunkSize(mongoTemplate, markerCount);
         String usedCollName = tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantRunData.class);
 		MongoCollection collWithPojoCodec = mongoTemplate.getDb().withCodecRegistry(ExportManager.pojoCodecRegistry).getCollection(usedCollName);
 		ExportManager exportManager = new ExportManager(mongoTemplate, nAssemblyId, collWithPojoCodec, VariantRunData.class, varQuery, samplesToExport, true, nQueryChunkSize, writingThread, markerCount, warningFileWriter, progress);
 		exportManager.readAndWrite();
-
-//		System.out.println("time spent converting: " + timeConverting.get());
-//		System.out.println("time spent writing: " + timeWriting.get());
 	}
-    
-	@Override
+
+    @Override
 	public String[] getExportDataFileExtensions() {
 		return new String[] {"vcf"};
 	}
+<<<<<<< HEAD
 
+=======
+	
+>>>>>>> master
     @Override
     public int[] getSupportedPloidyLevels() {
         return null;

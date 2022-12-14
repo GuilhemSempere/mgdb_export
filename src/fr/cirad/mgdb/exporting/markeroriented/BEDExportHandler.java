@@ -33,7 +33,6 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 
-import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 
 import fr.cirad.mgdb.exporting.IExportHandler;
@@ -41,7 +40,6 @@ import fr.cirad.mgdb.exporting.tools.ExportManager;
 import fr.cirad.mgdb.model.mongo.maintypes.Assembly;
 import fr.cirad.mgdb.model.mongo.maintypes.GenotypingSample;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
-import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
 import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
 import fr.cirad.tools.Helper;
 import fr.cirad.tools.ProgressIndicator;
@@ -86,7 +84,7 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 	}
 
 	@Override
-    public void exportData(OutputStream outputStream, String sModule, Integer nAssemblyId, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, Integer nAssemblyId, String sExportingUser, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
         ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
         MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
 
@@ -96,44 +94,34 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
 		
 		short nProgress = 0, nPreviousProgress = 0;
 		int nQueryChunkSize = (int) Math.min(2000, markerCount), nLoadedMarkerCount = 0;
+		Document projectionDoc = new Document(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ReferencePosition.FIELDNAME_SEQUENCE, 1)
+				.append(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ReferencePosition.FIELDNAME_START_SITE, 1)
+				.append(VariantData.FIELDNAME_REFERENCE_POSITION + "." + ReferencePosition.FIELDNAME_END_SITE, 1);
 		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(mongoTemplate.getDb().withCodecRegistry(ExportManager.pojoCodecRegistry).getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class)), varQuery, nAssemblyId, nQueryChunkSize)) {
 			while (markerCursor.hasNext())
 			{
-				int nLoadedMarkerCountInLoop = 0;
-				Map<String, String> markerChromosomalPositions = new LinkedHashMap<>();
-				boolean fStartingNewChunk = true;
-				while (markerCursor.hasNext() && (fStartingNewChunk || nLoadedMarkerCountInLoop%nQueryChunkSize != 0)) {
-					Document exportVariant = markerCursor.next();
-					Document refPos = (Document) Helper.readPossiblyNestedField(exportVariant, VariantData.FIELDNAME_REFERENCE_POSITION + "." + nAssemblyId + "." + ReferencePosition.FIELDNAME_SEQUENCE, ";", null);
-					markerChromosomalPositions.put((String) exportVariant.get("_id"), refPos == null ? null : (refPos.get(ReferencePosition.FIELDNAME_SEQUENCE) + ":" + refPos.get(ReferencePosition.FIELDNAME_START_SITE)));
-					nLoadedMarkerCountInLoop++;
-					fStartingNewChunk = false;
+				Document exportVariant = markerCursor.next();
+				Document refPos = (Document) Helper.readPossiblyNestedField(exportVariant, VariantData.FIELDNAME_REFERENCE_POSITION + "." + nAssemblyId + "." + ReferencePosition.FIELDNAME_SEQUENCE, ";", null);
+				String chrom = refPos == null ? null : (String) refPos.get(ReferencePosition.FIELDNAME_SEQUENCE);
+				if (chrom != null) {
+					Long pos = chrom == null ? null : ((Number) refPos.get(ReferencePosition.FIELDNAME_START_SITE)).longValue();
+					Number end = chrom == null ? null : (Number) refPos.get(ReferencePosition.FIELDNAME_END_SITE);
+					zos.write((chrom + "\t" + (pos - 1) + "\t" + ((end == null ? pos : end.longValue()) - 1) + "\t" + exportVariant.get("_id") + "\t" + "0" + "\t" + "+").getBytes());
 				}
-	
-				for (String variantId : markerChromosomalPositions.keySet())
-				{
-					String refPos = markerChromosomalPositions.get(variantId);
-					if (refPos != null)
-					{
-						String[] chromAndPos = refPos.split(":");
-						zos.write((chromAndPos[0] + "\t" + (Long.parseLong(chromAndPos[1])-1)  + "\t" + (Long.parseLong(chromAndPos[1])-1) + "\t" + variantId + "\t" + "0" + "\t" + "+").getBytes());
-					}
-					else
-						zos.write(("0\t0\t0\t" + variantId + "\t" + "0" + "\t" + "+").getBytes());
-					zos.write((LINE_SEPARATOR).getBytes());
-				}
+				else
+					zos.write(("0\t0\t0\t" + exportVariant.get("_id") + "\t" + "0" + "\t" + "+").getBytes());
+				zos.write((LINE_SEPARATOR).getBytes());
 				
-	            if (progress.isAborted())
-	            	return;
-	
-	            nLoadedMarkerCount += nLoadedMarkerCountInLoop;
+				nLoadedMarkerCount++;
 				nProgress = (short) (nLoadedMarkerCount * 100 / markerCount);
-				if (nProgress > nPreviousProgress)
-				{
+				if (nProgress > nPreviousProgress) {
 					progress.setCurrentStepProgress(nProgress);
 					nPreviousProgress = nProgress;
-				}	
-	        }
+				}
+			}
+
+            if (progress.isAborted())
+            	return;
 		}
 		zos.closeEntry();
 		zos.finish();
