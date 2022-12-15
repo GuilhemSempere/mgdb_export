@@ -90,24 +90,17 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
     }
 
     @Override
-<<<<<<< HEAD
-    public void exportData(OutputStream outputStream, String sModule, Integer nAssemblyId, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
-=======
-    public void exportData(OutputStream outputStream, String sModule, String sExportingUser, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
->>>>>>> master
+    public void exportData(OutputStream outputStream, String sModule, Integer nAssemblyId, String sExportingUser, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
         File warningFile = File.createTempFile("export_warnings_", "");
         FileWriter warningFileWriter = new FileWriter(warningFile);
 
         ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
         MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         
-<<<<<<< HEAD
         Assembly assembly = mongoTemplate.findOne(new Query(Criteria.where("_id").is(nAssemblyId)), Assembly.class);
         String exportName = sModule + "__" + assembly.getName() + "__" + markerCount + "variants__" + individualExportFiles.length + "individuals";
         int nQueryChunkSize = IExportHandler.computeQueryChunkSize(mongoTemplate, markerCount);
-=======
-        String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.length + "individuals";
->>>>>>> master
+
         MongoCollection<Document> varColl = mongoTemplate.getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class));
 
         if (individualMetadataFieldsToExport != null && !individualMetadataFieldsToExport.isEmpty()) {
@@ -123,49 +116,17 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
         }
 
         zos.putNextEntry(new ZipEntry(exportName + ".genotype"));
-<<<<<<< HEAD
-        TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = writeGenotypeFile(zos, sModule, nAssemblyId, nQueryChunkSize, varColl, varQuery, markerSynonyms, individualExportFiles, warningFileWriter, progress);
+        /*TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = */writeGenotypeFile(zos, sModule, nAssemblyId, nQueryChunkSize, varColl, varQuery, markerSynonyms, individualExportFiles, warningFileWriter, progress);
     	zos.closeEntry();
-=======
-        /*TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = */writeGenotypeFile(zos, sModule, IExportHandler.computeQueryChunkSize(mongoTemplate, markerCount), varColl, varQuery, markerSynonyms, individualExportFiles, warningFileWriter, progress);
-        zos.closeEntry();
->>>>>>> master
+
 
         zos.putNextEntry(new ZipEntry(exportName + ".map"));
         zos.write(("# fjFile = MAP" + LINE_SEPARATOR).getBytes());
         int nMarkerIndex = 0;
-        byte[] separatorBytes = "\t".getBytes();
+		byte[] separatorBytes = "\t".getBytes();
         ArrayList<String> unassignedMarkers = new ArrayList<>();
-<<<<<<< HEAD
+
         try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nAssemblyId, nQueryChunkSize)) {
-            progress.addStep("Writing map file");
-            progress.moveToNextStep();
-	        while (markerCursor.hasNext()) {
-	            Document exportVariant = markerCursor.next();
-	            Document refPos = (Document) Helper.readPossiblyNestedField(exportVariant, VariantData.FIELDNAME_REFERENCE_POSITION + "." + nAssemblyId + "." + ReferencePosition.FIELDNAME_SEQUENCE, ";", null);
-	            String chrom = refPos == null ? null : (String) refPos.get(ReferencePosition.FIELDNAME_SEQUENCE);
-	            Long pos = refPos == null ? null : ((Number) refPos.get(ReferencePosition.FIELDNAME_START_SITE)).longValue();
-                String markerId = (String) exportVariant.get("_id");
-	            if (chrom == null) 
-	            	unassignedMarkers.add(markerId);
-	
-	            String exportedId = markerSynonyms == null ? markerId : markerSynonyms.get(markerId);
-	            zos.write((exportedId + "\t" + (chrom == null ? "0" : chrom) + "\t" + (pos == null ? 0 : pos) + LINE_SEPARATOR).getBytes());
-	
-//	            if (problematicMarkerIndexToNameMap.containsKey(nMarkerIndex)) {	// we are going to need this marker's name for the warning file
-//	            	String variantName = markerId;
-//	                if (markerSynonyms != null) {
-//	                	String syn = markerSynonyms.get(markerId);
-//	                    if (syn != null)
-//	                        variantName = syn;
-//	                }
-//	                problematicMarkerIndexToNameMap.put(nMarkerIndex, variantName);
-//	            }
-	            progress.setCurrentStepProgress(nMarkerIndex++ * 100 / markerCount);
-	        }
-	    }
-=======
-        try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, 50000)) {
             progress.addStep("Writing map file");
             progress.moveToNextStep();
             while (markerCursor.hasNext()) {
@@ -197,7 +158,6 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
                 progress.setCurrentStepProgress(nMarkerIndex++ * 100 / markerCount);
             }
         }
->>>>>>> master
         zos.closeEntry();
         
         if (unassignedMarkers.size() > 0)
@@ -227,7 +187,6 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
         progress.setCurrentStepProgress((short) 100);
     }
 
-<<<<<<< HEAD
     public TreeMap<Integer, Comparable> writeGenotypeFile(OutputStream os, String sModule, Integer nAssemblyId, int nQueryChunkSize, MongoCollection<Document> varColl, Document varQuery, Map<String, String> markerSynonyms, File[] individualExportFiles, FileWriter warningFileWriter, ProgressIndicator progress) throws IOException, InterruptedException {
    		os.write(("# fjFile = GENOTYPE" + LINE_SEPARATOR).getBytes());
         
@@ -245,25 +204,7 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
 			for (File f : individualExportFiles)
 				f.delete();
 		}
-=======
-    public TreeMap<Integer, Comparable> writeGenotypeFile(OutputStream os, String sModule, int nQueryChunkSize, MongoCollection<Document> varColl, Document varQuery, Map<String, String> markerSynonyms, File[] individualExportFiles, FileWriter warningFileWriter, ProgressIndicator progress) throws IOException, InterruptedException {
-        os.write(("# fjFile = GENOTYPE" + LINE_SEPARATOR).getBytes());
-        
-        boolean fWorkingOnRuns = varColl.getNamespace().getCollectionName().equals(MongoTemplateManager.getMongoCollectionName(VariantRunData.class));
-        try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nQueryChunkSize)) {
-            while (markerCursor.hasNext()) {
-                Document exportVariant = markerCursor.next();
-                String markerId = (String) (fWorkingOnRuns ? Helper.readPossiblyNestedField(exportVariant, "_id." + VariantRunDataId.FIELDNAME_VARIANT_ID, ";") : exportVariant.get("_id"));
-                String exportedId = markerSynonyms == null ? markerId : markerSynonyms.get(markerId);
-                os.write(("\t" + exportedId).getBytes());
-            }
-        }
-        catch (IOException ioe) {
-            LOG.error("Error occurred while writing Flapjack genotype file. Deleting " + individualExportFiles.length + " temporary individual-oriented files.", ioe);
-            for (File f : individualExportFiles)
-                f.delete();
-        }
->>>>>>> master
+
         os.write(LINE_SEPARATOR.getBytes());
 
         TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = new TreeMap<Integer, Comparable>();
@@ -443,19 +384,11 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
         return new String[] {"genotype", "map", "phenotype"};
     }
 
-<<<<<<< HEAD
 	@Override
 	public String getExportContentType() {
 		return "application/x-fjzip";
 	}
 
-=======
-    @Override
-    public String getExportContentType() {
-        return "application/x-fjzip";
-    }
-    
->>>>>>> master
     @Override
     public int[] getSupportedPloidyLevels() {
         return null;

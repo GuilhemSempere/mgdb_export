@@ -142,11 +142,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 	}
 
     @Override
-<<<<<<< HEAD
-    public void exportData(OutputStream outputStream, String sModule, Integer nAssemblyId, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
-=======
-    public void exportData(OutputStream outputStream, String sModule, String sExportingUser, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
->>>>>>> master
+    public void exportData(OutputStream outputStream, String sModule, Integer nAssemblyId, String sExportingUser, Collection<String> individuals1, Collection<String> individuals2, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, HashMap<String, Float> annotationFieldThresholds, HashMap<String, Float> annotationFieldThresholds2, List<GenotypingSample> samplesToExport, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
 		List<String> sortedIndividuals = samplesToExport.stream().map(gs -> gs.getIndividual()).distinct().sorted(new AlphaNumericComparator<String>()).collect(Collectors.toList());
 
 		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
@@ -350,7 +346,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
             		                    if (syn != null)
             		                        variantId = syn;
             		                }
-            		                vcChunks[nChunkIndex][nVariantIndex++] = vrd.toVariantContext(mongoTemplate, runsToWrite, !MgdbDao.idLooksGenerated(variantId), samplesToExport, individualPositions, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? variantId : markerSynonyms.get(variantId));
+            		                vcChunks[nChunkIndex][nVariantIndex++] = vrd.toVariantContext(mongoTemplate, runsToWrite, nAssemblyId, !MgdbDao.idLooksGenerated(variantId), samplesToExport, individualPositions, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? variantId : markerSynonyms.get(variantId));
             					}
             					catch (Exception e)
             					{
@@ -363,23 +359,6 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		            };
 		            executor.execute(t);
 		        }
-
-<<<<<<< HEAD
-						VariantContext vc = vrd.toVariantContext(mongoTemplate, runsToWrite, nAssemblyId, !MgdbDao.idLooksGenerated(variantId), samplesToExport, individualPositions, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? variantId : markerSynonyms.get(variantId));
-//						timeConverting.addAndGet(System.currentTimeMillis() - b4);
-						
-//						b4 = System.currentTimeMillis();
-						finalVariantContextWriter.add(vc);
-//						timeWriting.addAndGet(System.currentTimeMillis() - b4);
-					}
-					catch (Exception e)
-					{
-						if (progress.getError() == null)	// only log this once
-							LOG.debug("Unable to export " + idOfVarToWrite, e);
-						progress.setError("Unable to export " + idOfVarToWrite + ": " + e.getMessage());
-					}
-				}
-=======
 		        executor.shutdown();
 		        try {
                     executor.awaitTermination(Integer.MAX_VALUE, TimeUnit.DAYS);
@@ -391,7 +370,6 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		        for (VariantContext[] vcChunk : vcChunks)
 		            for (VariantContext vc : vcChunk)
 	                    finalVariantContextWriter.add(vc);
->>>>>>> master
 			}
 		};
 
@@ -406,11 +384,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 	public String[] getExportDataFileExtensions() {
 		return new String[] {"vcf"};
 	}
-<<<<<<< HEAD
 
-=======
-	
->>>>>>> master
     @Override
     public int[] getSupportedPloidyLevels() {
         return null;
