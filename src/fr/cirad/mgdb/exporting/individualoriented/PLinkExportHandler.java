@@ -141,6 +141,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
     	zos.closeEntry();
 
         zos.putNextEntry(new ZipEntry(exportName + ".map"));
+        String assemblyPrefix = nAssemblyId == null ? "" : ("." + nAssemblyId);
 
         int nMarkerIndex = 0;
         ArrayList<Comparable> unassignedMarkers = new ArrayList<>();
@@ -150,7 +151,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
             progress.moveToNextStep();
 	        while (markerCursor.hasNext()) {
 	            Document exportVariant = markerCursor.next();
-	            Document refPos = (Document) Helper.readPossiblyNestedField(exportVariant, VariantData.FIELDNAME_REFERENCE_POSITION + "." + nAssemblyId, ";", null);
+	            Document refPos = (Document) Helper.readPossiblyNestedField(exportVariant, VariantData.FIELDNAME_REFERENCE_POSITION + assemblyPrefix, ";", null);
 	            Long pos = refPos == null ? null : ((Number) refPos.get(ReferencePosition.FIELDNAME_START_SITE)).longValue();
 	            String chrom = refPos == null ? null : (String) refPos.get(ReferencePosition.FIELDNAME_SEQUENCE);
                 String markerId = (String) exportVariant.get("_id");
