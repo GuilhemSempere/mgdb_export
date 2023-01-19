@@ -16,18 +16,6 @@
  *******************************************************************************/
 package fr.cirad.mgdb.exporting.individualoriented;
 
-import fr.cirad.mgdb.exporting.IExportHandler;
-import fr.cirad.mgdb.exporting.tools.ExportManager;
-import fr.cirad.mgdb.model.mongo.maintypes.Assembly;
-import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
-import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
-import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
-import fr.cirad.mgdb.model.mongodao.MgdbDao;
-import fr.cirad.tools.Helper;
-import fr.cirad.tools.ProgressIndicator;
-import fr.cirad.tools.mongo.MongoTemplateManager;
-import htsjdk.variant.variantcontext.VariantContext.Type;
-
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -58,6 +46,19 @@ import org.springframework.data.mongodb.core.query.Query;
 
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
+
+import fr.cirad.mgdb.exporting.IExportHandler;
+import fr.cirad.mgdb.exporting.tools.ExportManager;
+import fr.cirad.mgdb.model.mongo.maintypes.Assembly;
+import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
+import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
+import fr.cirad.mgdb.model.mongo.subtypes.AbstractVariantData;
+import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
+import fr.cirad.mgdb.model.mongodao.MgdbDao;
+import fr.cirad.tools.Helper;
+import fr.cirad.tools.ProgressIndicator;
+import fr.cirad.tools.mongo.MongoTemplateManager;
+import htsjdk.variant.variantcontext.VariantContext.Type;
 
 /**
  * The Class PLinkExportHandler.
@@ -141,7 +142,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
     	zos.closeEntry();
 
         zos.putNextEntry(new ZipEntry(exportName + ".map"));
-        String assemblyPrefix = nAssemblyId == null ? "" : ("." + nAssemblyId);
+        String refPosPath = AbstractVariantData.FIELDNAME_REFERENCE_POSITION + (nAssemblyId != null ? "." + nAssemblyId : "");
 
         int nMarkerIndex = 0;
         ArrayList<Comparable> unassignedMarkers = new ArrayList<>();
@@ -151,7 +152,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
             progress.moveToNextStep();
 	        while (markerCursor.hasNext()) {
 	            Document exportVariant = markerCursor.next();
-	            Document refPos = (Document) Helper.readPossiblyNestedField(exportVariant, VariantData.FIELDNAME_REFERENCE_POSITION + assemblyPrefix, ";", null);
+	            Document refPos = (Document) Helper.readPossiblyNestedField(exportVariant, refPosPath, ";", null);
 	            Long pos = refPos == null ? null : ((Number) refPos.get(ReferencePosition.FIELDNAME_START_SITE)).longValue();
 	            String chrom = refPos == null ? null : (String) refPos.get(ReferencePosition.FIELDNAME_SEQUENCE);
                 String markerId = (String) exportVariant.get("_id");
@@ -201,8 +202,8 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
         progress.setCurrentStepProgress((short) 100);
     }
     
-    public TreeMap<Integer, Comparable> writeGenotypeFile(OutputStream os, String sModule, Collection<String> individualsToExport, int nQueryChunkSize, MongoCollection<Document> varColl, Document varQuery, Map<String, String> markerSynonyms, File[] individualExportFiles, FileWriter warningFileWriter, ProgressIndicator progress) throws IOException, InterruptedException {
-        TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = new TreeMap<Integer, Comparable>();
+    public TreeMap<Integer, String> writeGenotypeFile(OutputStream os, String sModule, Collection<String> individualsToExport, int nQueryChunkSize, MongoCollection<Document> varColl, Document varQuery, Map<String, String> markerSynonyms, File[] individualExportFiles, FileWriter warningFileWriter, ProgressIndicator progress) throws IOException, InterruptedException {
+        TreeMap<Integer, String> problematicMarkerIndexToNameMap = new TreeMap<>();
         short nProgress = 0, nPreviousProgress = 0;
         
         int i = 0, nNConcurrentThreads = Math.max(1, Runtime.getRuntime().availableProcessors());	// use multiple threads so we can prepare several lines at once

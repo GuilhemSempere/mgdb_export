@@ -53,6 +53,7 @@ import fr.cirad.mgdb.model.mongo.maintypes.Individual;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData.VariantRunDataId;
+import fr.cirad.mgdb.model.mongo.subtypes.AbstractVariantData;
 import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
 import fr.cirad.tools.Helper;
 import fr.cirad.tools.ProgressIndicator;
@@ -124,6 +125,7 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
         zos.write(("# fjFile = MAP" + LINE_SEPARATOR).getBytes());
         int nMarkerIndex = 0;
 		byte[] separatorBytes = "\t".getBytes();
+		String refPosPath = AbstractVariantData.FIELDNAME_REFERENCE_POSITION + (nAssemblyId != null ? "." + nAssemblyId : "");
         ArrayList<String> unassignedMarkers = new ArrayList<>();
 
         try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nAssemblyId, nQueryChunkSize)) {
@@ -131,7 +133,7 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
             progress.moveToNextStep();
             while (markerCursor.hasNext()) {
                 Document exportVariant = markerCursor.next();
-                Document refPos = (Document) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION);
+                Document refPos = (Document) Helper.readPossiblyNestedField(exportVariant, refPosPath, ";", null);
                 String markerId = (String) exportVariant.get("_id");
                 String chrom = refPos == null ? null : (String) refPos.get(ReferencePosition.FIELDNAME_SEQUENCE);
                 Long pos = chrom == null ? null : ((Number) refPos.get(ReferencePosition.FIELDNAME_START_SITE)).longValue();
@@ -187,7 +189,7 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
         progress.setCurrentStepProgress((short) 100);
     }
 
-    public TreeMap<Integer, Comparable> writeGenotypeFile(OutputStream os, String sModule, Integer nAssemblyId, int nQueryChunkSize, MongoCollection<Document> varColl, Document varQuery, Map<String, String> markerSynonyms, File[] individualExportFiles, FileWriter warningFileWriter, ProgressIndicator progress) throws IOException, InterruptedException {
+    public TreeMap<Integer, String> writeGenotypeFile(OutputStream os, String sModule, Integer nAssemblyId, int nQueryChunkSize, MongoCollection<Document> varColl, Document varQuery, Map<String, String> markerSynonyms, File[] individualExportFiles, FileWriter warningFileWriter, ProgressIndicator progress) throws IOException, InterruptedException {
    		os.write(("# fjFile = GENOTYPE" + LINE_SEPARATOR).getBytes());
         
    		boolean fWorkingOnRuns = varColl.getNamespace().getCollectionName().equals(MongoTemplateManager.getMongoCollectionName(VariantRunData.class));
@@ -207,7 +209,7 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
 
         os.write(LINE_SEPARATOR.getBytes());
 
-        TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = new TreeMap<Integer, Comparable>();
+        TreeMap<Integer, String> problematicMarkerIndexToNameMap = new TreeMap<>();
         short nProgress = 0, nPreviousProgress = 0;
         int i = 0, nNConcurrentThreads = Math.max(1, Runtime.getRuntime().availableProcessors());   // use multiple threads so we can prepare several lines at once
         HashMap<Integer, StringBuilder> individualLines = new HashMap<>(nNConcurrentThreads);
