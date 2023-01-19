@@ -28,6 +28,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -55,6 +56,7 @@ import fr.cirad.mgdb.model.mongo.maintypes.Assembly;
 import fr.cirad.mgdb.model.mongo.maintypes.GenotypingSample;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
+import fr.cirad.mgdb.model.mongo.subtypes.AbstractVariantData;
 import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
 import fr.cirad.mgdb.model.mongo.subtypes.SampleGenotype;
 import fr.cirad.tools.AlphaNumericComparator;
@@ -136,16 +138,14 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 		
 		AbstractExportWritingThread writingThread = new AbstractExportWritingThread() {
 			public void run() {
+				final Iterator<String> exportedVariantIterator = orderedMarkerIDs.iterator();
 				for (Collection<VariantRunData> runsToWrite : markerRunsToWrite) {
+                	String idOfVarToWrite = exportedVariantIterator.next();
 					if (progress.isAborted() || progress.getError() != null)
 						return;
+					
+					AbstractVariantData variant = runsToWrite == null || runsToWrite.isEmpty() ? mongoTemplate.findById(idOfVarToWrite, VariantData.class) : runsToWrite.iterator().next();
 
-					if (runsToWrite == null || runsToWrite.isEmpty())
-						continue;
-					
-                    VariantRunData vrd = runsToWrite.iterator().next();
-					String idOfVarToWrite = vrd.getVariantId();
-					
 					List<String> variantDataOrigin = new ArrayList<>();
 					StringBuilder sb = new StringBuilder(initialStringBuilderCapacity.get() == 0 ? 3 * individualPositions.size() /* rough estimation */ : initialStringBuilderCapacity.get());
 					try
@@ -157,42 +157,43 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 		                }
 
 		                LinkedHashSet<String>[] individualGenotypes = new LinkedHashSet[individualPositions.size()];
-	                	for (VariantRunData run : runsToWrite) {
-	                    	for (Integer sampleId : run.getSampleGenotypes().keySet()) {
-                                String individualId = sampleIdToIndividualMap.get(sampleId);
-                                Integer individualIndex = individualPositions.get(individualId);
-                                if (individualIndex == null)
-                                    continue;   // unwanted sample
-
-								SampleGenotype sampleGenotype = run.getSampleGenotypes().get(sampleId);
-	                            String gtCode = sampleGenotype.getCode();
-	                            
-								if (gtCode == null || !VariantData.gtPassesVcfAnnotationFilters(individualId, sampleGenotype, individuals1, annotationFieldThresholds, individuals2, annotationFieldThresholds2))
-									continue;	// skip genotype
-								
-								if (individualGenotypes[individualIndex] == null)
-									individualGenotypes[individualIndex] = new LinkedHashSet<String>();
-								individualGenotypes[individualIndex].add(gtCode);
-	                        }
-	                    }
+		                if (runsToWrite != null)
+		                	for (VariantRunData run : runsToWrite) {
+		                    	for (Integer sampleId : run.getSampleGenotypes().keySet()) {
+		                            String individualId = sampleIdToIndividualMap.get(sampleId);
+		                            Integer individualIndex = individualPositions.get(individualId);
+		                            if (individualIndex == null)
+		                                continue;   // unwanted sample
+		
+									SampleGenotype sampleGenotype = run.getSampleGenotypes().get(sampleId);
+		                            String gtCode = sampleGenotype.getCode();
+		                            
+									if (gtCode == null || !VariantData.gtPassesVcfAnnotationFilters(individualId, sampleGenotype, individuals1, annotationFieldThresholds, individuals2, annotationFieldThresholds2))
+										continue;	// skip genotype
+									
+									if (individualGenotypes[individualIndex] == null)
+										individualGenotypes[individualIndex] = new LinkedHashSet<String>();
+									individualGenotypes[individualIndex].add(gtCode);
+		                        }
+		                    }
 
 	                	String refAllele;
 						try {
-							refAllele = vrd.getKnownAlleles().iterator().next();
+							refAllele = variant.getKnownAlleles().iterator().next();
 						}
 						catch (IndexOutOfBoundsException ioobe) {	// VariantRunData's known-allele-list is not up to date
-							vrd.setKnownAlleles(mongoTemplate.findById(vrd.getId().getVariantId(), VariantData.class).getKnownAlleles());
-							mongoTemplate.save(vrd);
-							refAllele = vrd.getKnownAlleles().iterator().next();
+							variant.setKnownAlleles(mongoTemplate.findById(variant.getVariantId(), VariantData.class).getKnownAlleles());
+							mongoTemplate.save(variant);
+							refAllele = variant.getKnownAlleles().iterator().next();
 						}
 						
-						ReferencePosition rp = vrd.getReferencePosition(nAssemblyId);
+						ReferencePosition rp = variant.getReferencePosition(nAssemblyId);
 		                String chrom = rp == null ? "0" : rp.getSequence();
 		                long start = rp == null ? 0 : rp.getStartSite();
-		                long end = Type.SNP.equals(vrd.getType()) ? start : start + refAllele.length() - 1;
-		                sb.append(chrom).append("\t").append(StringUtils.join(variantDataOrigin, ";") /*source*/).append("\t").append(typeToOntology.get(vrd.getType())).append("\t").append(start).append("\t").append(end).append("\t.\t+\t.\t");
-		                String syn = markerSynonyms == null ? null : markerSynonyms.get(vrd.getVariantId());
-		                sb.append("ID=").append(idOfVarToWrite).append(";").append((syn != null ? "Name=" + syn + ";" : "")).append("alleles=").append(StringUtils.join(vrd.getKnownAlleles(), "/")).append(";").append("refallele=").append(refAllele).append(";");
+		                long end = Type.SNP.equals(variant.getType()) ? start : start + refAllele.length() - 1;
+		                sb.append(chrom).append("\t").append(StringUtils.join(variantDataOrigin, ";") /*source*/).append("\t").append(typeToOntology.get(variant.getType())).append("\t").append(start).append("\t").append(end).append("\t.\t+\t.\t");
+		                String syn = markerSynonyms == null ? null : markerSynonyms.get(variant.getVariantId());
+		                sb.append("ID=").append(idOfVarToWrite).append(";").append((syn != null ? "Name=" + syn + ";" : "")).append("alleles=").append(StringUtils.join(variant.getKnownAlleles(), "/")).append(";").append("refallele=").append(refAllele).append(";");
 
 	            		HashMap<String, List<String>> genotypeStringCache = new HashMap<>();
 		                for (String individual : individualPositions.keySet() /* we use this list because it has the proper ordering */) {
@@ -212,8 +213,8 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 		                                continue; /* skip missing genotypes */
 
 		                            int count = 0;
-		                            for (String allele : getAllelesFromGenotypeCodeUsingCache(genotype, genotypeStringCache, vrd, mongoTemplate)) {
-		                                for (String ka : vrd.getKnownAlleles()) {
+		                            for (String allele : getAllelesFromGenotypeCodeUsingCache(genotype, genotypeStringCache, variant, mongoTemplate)) {
+		                                for (String ka : variant.getKnownAlleles()) {
 		                                    if (allele.equals(ka) && !(compt.containsKey(ka))) {
 		                                        count++;
 		                                        compt.put(ka, count);
@@ -241,7 +242,7 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
 		                        }
 		                    }
 
-		        			List<String> alleles = getAllelesFromGenotypeCodeUsingCache(mostFrequentGenotype, genotypeStringCache, vrd, mongoTemplate);
+		        			List<String> alleles = getAllelesFromGenotypeCodeUsingCache(mostFrequentGenotype, genotypeStringCache, variant, mongoTemplate);
 		                    if (!alleles.isEmpty()) {
 		                        sb.append("acounts=").append(individual).append(":");
 
@@ -255,7 +256,7 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
                                 if (reverseSortedGtCounts.get(0) == reverseSortedGtCounts.get(1))
                                     mostFrequentGenotype = null;
 		                        String sVariantId = markerSynonyms != null ? markerSynonyms.get(idOfVarToWrite) : idOfVarToWrite;
-		                        warningFileWriter.write("- Dissimilar genotypes found for variant " + (sVariantId == null ? vrd.getId() : sVariantId) + ", individual " + individual + ". " + (mostFrequentGenotype == null ? "Exporting as missing data" : "Exporting most frequent: " + StringUtils.join(alleles, ",")) + "\n");
+		                        warningFileWriter.write("- Dissimilar genotypes found for variant " + (sVariantId == null ? variant.getVariantId() : sVariantId) + ", individual " + individual + ". " + (mostFrequentGenotype == null ? "Exporting as missing data" : "Exporting most frequent: " + StringUtils.join(alleles, ",")) + "\n");
 		                    }
 		                }
 		                sb.append(LINE_SEPARATOR);
@@ -301,10 +302,10 @@ public class GFFExportHandler extends AbstractMarkerOrientedExportHandler {
         progress.setCurrentStepProgress((short) 100);
     }
 
-	private List<String> getAllelesFromGenotypeCodeUsingCache(String gtCode, HashMap<String, List<String>> genotypeStringCache, VariantRunData vrd, MongoTemplate mongoTemplate) {
+	private List<String> getAllelesFromGenotypeCodeUsingCache(String gtCode, HashMap<String, List<String>> genotypeStringCache, AbstractVariantData variant, MongoTemplate mongoTemplate) {
 		List<String> alleles = genotypeStringCache.get(gtCode);
         if (alleles == null) {
-        	alleles = vrd.safelyGetAllelesFromGenotypeCode(gtCode, mongoTemplate);
+        	alleles = variant.safelyGetAllelesFromGenotypeCode(gtCode, mongoTemplate);
         	genotypeStringCache.put(gtCode, alleles);
         }
         return alleles;

@@ -59,6 +59,7 @@ import fr.cirad.mgdb.model.mongo.maintypes.Sequence;
 import fr.cirad.mgdb.model.mongo.maintypes.SequenceStats;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
+import fr.cirad.mgdb.model.mongo.subtypes.AbstractVariantData;
 import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
 import fr.cirad.mgdb.model.mongodao.MgdbDao;
 import fr.cirad.tools.AlphaNumericComparator;
@@ -313,40 +314,34 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 		writer.writeHeader(header);
 
 		HashMap<Integer, Object /*phID*/> phasingIDsBySample = new HashMap<>();
-
 		final VariantContextWriter finalVariantContextWriter = writer;
 		AbstractExportWritingThread writingThread = new AbstractExportWritingThread() {
 			public void run() {
 				if (markerRunsToWrite.isEmpty())
 					return;
 
-			    List<Collection<Collection<VariantRunData>>> splitVrdColls = Helper.evenlySplitCollection(markerRunsToWrite, Runtime.getRuntime().availableProcessors() - 1);
+			    ArrayList<ArrayList<Collection<VariantRunData>>> splitVrdColls = Helper.evenlySplitCollection(markerRunsToWrite, Runtime.getRuntime().availableProcessors() - 1);
+			    ArrayList<ArrayList<String>> splitVariantIdColls = Helper.evenlySplitCollection(orderedMarkerIDs, splitVrdColls.size());
+			    
                 VariantContext[][] vcChunks = new VariantContext[splitVrdColls.size()][];
 		        ExecutorService executor = Executors.newFixedThreadPool(vcChunks.length);
 		        for (int i=0; i<vcChunks.length; i++) {
-		            final Collection<Collection<VariantRunData>> vrdCollChunk = splitVrdColls.get(i);
+		            final ArrayList<Collection<VariantRunData>> vrdCollChunk = splitVrdColls.get(i);
+		            final ArrayList<String> variantIdCollChunk = splitVariantIdColls.get(i);
 		            final int nChunkIndex = i;
 		            Thread t = new Thread() {
 		                public void run() {
                             vcChunks[nChunkIndex] = new VariantContext[vrdCollChunk.size()];		                    
                             int nVariantIndex = 0;
 		                    for (Collection<VariantRunData> runsToWrite : vrdCollChunk) {
-		                    
-            					if (progress.isAborted() || progress.getError() != null || runsToWrite == null || runsToWrite.isEmpty())
-            						return;
-
-                                VariantRunData vrd = runsToWrite.iterator().next();
-            					String idOfVarToWrite = vrd.getVariantId();
-            					String variantId = null;
+		                    	String idOfVarToWrite = variantIdCollChunk.get(nVariantIndex);
+		    					if (progress.isAborted() || progress.getError() != null)
+		    						return;
+		    					
+		    					AbstractVariantData variant = runsToWrite == null || runsToWrite.isEmpty() ? mongoTemplate.findById(idOfVarToWrite, VariantData.class) : runsToWrite.iterator().next();
             					try
             					{
-            						variantId = idOfVarToWrite;						
-            		                if (markerSynonyms != null) {
-            		                	String syn = markerSynonyms.get(variantId);
-            		                    if (syn != null)
-            		                        variantId = syn;
-            		                }
-            		                vcChunks[nChunkIndex][nVariantIndex++] = vrd.toVariantContext(mongoTemplate, runsToWrite, nAssemblyId, !MgdbDao.idLooksGenerated(variantId), samplesToExport, individualPositions, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? variantId : markerSynonyms.get(variantId));
+            		                vcChunks[nChunkIndex][nVariantIndex++] = variant.toVariantContext(mongoTemplate, runsToWrite, nAssemblyId, !MgdbDao.idLooksGenerated(idOfVarToWrite), samplesToExport, individualPositions, individuals1, individuals2, phasingIDsBySample, annotationFieldThresholds, annotationFieldThresholds2, warningFileWriter, markerSynonyms == null ? idOfVarToWrite : markerSynonyms.get(idOfVarToWrite));
             					}
             					catch (Exception e)
             					{
