@@ -90,7 +90,7 @@ public class BEDExportHandler extends AbstractMarkerOrientedExportHandler
         MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
 
         Assembly assembly = mongoTemplate.findOne(new Query(Criteria.where("_id").is(nAssemblyId)), Assembly.class);
-		String exportName = sModule + "__" + assembly.getName() + "__" + markerCount + "variants";
+		String exportName = sModule + (assembly != null ? "__" + assembly.getName() : "") + "__" + markerCount + "variants";
 		zos.putNextEntry(new ZipEntry(exportName + ".bed"));
 		
 		short nProgress = 0, nPreviousProgress = 0;
