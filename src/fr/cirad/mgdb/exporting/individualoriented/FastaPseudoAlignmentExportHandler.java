@@ -124,8 +124,9 @@ public class FastaPseudoAlignmentExportHandler extends AbstractIndividualOriente
         }
         
         zos.putNextEntry(new ZipEntry(exportName + "." + getExportDataFileExtensions()[0]));
-        zos.write(getHeaderline(individualExportFiles.length, (int) markerCount).getBytes());
+        zos.write(getHeaderlines(individualExportFiles.length, (int) markerCount).getBytes());
         TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = writeGenotypeFile(zos, sModule, exportedIndividuals, nQueryChunkSize, null, varQuery, markerSynonyms, individualExportFiles, warningFileWriter, progress);
+        zos.write(getFooterlines().getBytes());
     	zos.closeEntry();
 
         if (warningFile.length() > 0) {
@@ -232,8 +233,8 @@ public class FastaPseudoAlignmentExportHandler extends AbstractIndividualOriente
 			                        problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
 			                    }
 			
-			                    String all1 = alleles.length == 0 ? "-" : alleles[0];
-			                    String all2 = alleles.length == 0 ? "-" : alleles[alleles.length == 1 ? 0 : 1];
+			                    String all1 = alleles.length == 0 ? getMissingAlleleString() : alleles[0];
+			                    String all2 = alleles.length == 0 ? getMissingAlleleString() : alleles[alleles.length == 1 ? 0 : 1];
 		                        indLine.append(all1).append(all2);
 			
 			                    nMarkerIndex++;
@@ -294,6 +295,10 @@ public class FastaPseudoAlignmentExportHandler extends AbstractIndividualOriente
         return problematicMarkerIndexToNameMap;
     }
 
+    protected String getMissingAlleleString() {
+		return "N";
+	}
+    
     protected String getLinePrefix() {
 		return ">";
 	}
@@ -302,10 +307,14 @@ public class FastaPseudoAlignmentExportHandler extends AbstractIndividualOriente
 		return "\n";
 	}
     
-    protected String getHeaderline(int nIndividualCount, int nMarkerCount) {
+    protected String getHeaderlines(int nIndividualCount, int nMarkerCount) {
 		return "";
 	}
 
+	protected String getFooterlines() {
+		return "";
+	}
+	
 	/* (non-Javadoc)
 	 * @see fr.cirad.mgdb.exporting.IExportHandler#getStepList()
      */
