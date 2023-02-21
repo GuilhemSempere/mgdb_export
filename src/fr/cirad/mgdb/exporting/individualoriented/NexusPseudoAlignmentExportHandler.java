@@ -57,7 +57,7 @@ public class NexusPseudoAlignmentExportHandler extends PhylipPseudoAlignmentExpo
      */
     @Override
     public String getExportFormatDescription() {
-    	return "Exports a zipped NEXUS file containing a pseudo-alignment consisting in the concatenation of SNP alleles. Compatible with phylogenetic tree construction tools like MUSCLE";
+    	return "Exports a zipped NEXUS file containing a pseudo-alignment consisting in the concatenation of SNP alleles, compatible with phylogenetic tree construction tools like MUSCLE. An additional PLINK-style map file is added for reference.";
     }
 
 	/* (non-Javadoc)

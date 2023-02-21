@@ -42,10 +42,13 @@ import org.bson.Document;
 import org.springframework.data.mongodb.core.MongoTemplate;
 
 import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
 
 import fr.cirad.mgdb.exporting.IExportHandler;
 import fr.cirad.mgdb.exporting.tools.ExportManager;
+import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
+import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
 import fr.cirad.tools.Helper;
 import fr.cirad.tools.ProgressIndicator;
 import fr.cirad.tools.mongo.MongoTemplateManager;
@@ -84,7 +87,7 @@ public class FastaPseudoAlignmentExportHandler extends AbstractIndividualOriente
      */
     @Override
     public String getExportFormatDescription() {
-    	return "Exports a zipped FASTA file containing a pseudo-alignment consisting in the concatenation of SNP alleles. Compatible with phylogenetic tree construction tools like FastTree";
+    	return "Exports a zipped FASTA file containing a pseudo-alignment consisting in the concatenation of SNP alleles, compatible with phylogenetic tree construction tools like FastTree. An additional PLINK-style map file is added for reference.";
     }
 
 	/* (non-Javadoc)
@@ -128,6 +131,28 @@ public class FastaPseudoAlignmentExportHandler extends AbstractIndividualOriente
         TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = writeGenotypeFile(zos, sModule, exportedIndividuals, nQueryChunkSize, null, varQuery, markerSynonyms, individualExportFiles, warningFileWriter, progress);
         zos.write(getFooterlines().getBytes());
     	zos.closeEntry();
+    	
+        zos.putNextEntry(new ZipEntry(exportName + ".map"));
+        int nMarkerIndex = 0;
+        ArrayList<Comparable> unassignedMarkers = new ArrayList<>();
+		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(mongoTemplate.getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class)), varQuery, 50000)) {
+            progress.addStep("Writing map file");
+            progress.moveToNextStep();
+	        while (markerCursor.hasNext()) {
+	            Document exportVariant = markerCursor.next();
+	            Document refPos = (Document) exportVariant.get(VariantData.FIELDNAME_REFERENCE_POSITION);
+	            String chrom = refPos == null ? null : (String) refPos.get(ReferencePosition.FIELDNAME_SEQUENCE);
+	            Long pos = chrom == null ? null : ((Number) refPos.get(ReferencePosition.FIELDNAME_START_SITE)).longValue();
+	            String markerId = (String) exportVariant.get("_id");
+	            if (chrom == null)
+	            	unassignedMarkers.add(markerId);
+	            String exportedId = markerSynonyms == null ? markerId : markerSynonyms.get(markerId);
+	            zos.write(((chrom == null ? "0" : chrom) + " " + exportedId + " " + 0 + " " + (pos == null ? 0 : pos) + LINE_SEPARATOR).getBytes());
+
+                progress.setCurrentStepProgress(nMarkerIndex++ * 100 / markerCount);
+	        }
+		}
+        zos.closeEntry();
 
         if (warningFile.length() > 0) {
             progress.addStep("Adding lines to warning file");
