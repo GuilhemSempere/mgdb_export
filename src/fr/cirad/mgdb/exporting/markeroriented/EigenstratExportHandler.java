@@ -188,6 +188,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
     		AbstractExportWritingThread writingThread = new AbstractExportWritingThread() {
     			public void run() {
     				final Iterator<String> exportedVariantIterator = orderedMarkerIDs.iterator();
+//    				final Iterator<String> exportedVariantIterator = orderedMarkerIDs != null ? orderedMarkerIDs.iterator() : markerRunsToWrite.;
     				markerRunsToWrite.forEach(runsToWrite -> {
                     	String idOfVarToWrite = exportedVariantIterator.next();
     					if (progress.isAborted() || progress.getError() != null)

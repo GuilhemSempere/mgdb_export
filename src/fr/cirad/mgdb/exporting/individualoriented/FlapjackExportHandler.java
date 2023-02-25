@@ -125,10 +125,12 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
         zos.write(("# fjFile = MAP" + LINE_SEPARATOR).getBytes());
         int nMarkerIndex = 0;
 		byte[] separatorBytes = "\t".getBytes();
-		String refPosPath = AbstractVariantData.FIELDNAME_REFERENCE_POSITION + (nAssemblyId != null ? "." + nAssemblyId : "");
+		String refPosPath = Assembly.getVariantRefPosPath(nAssemblyId);
         ArrayList<String> unassignedMarkers = new ArrayList<>();
 
-        try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nAssemblyId, nQueryChunkSize)) {
+    	String refPosPathWithTrailingDot = Assembly.getThreadBoundVariantRefPosPath() + ".";
+    	Document projectionAndSortDoc = new Document(refPosPathWithTrailingDot + ReferencePosition.FIELDNAME_SEQUENCE, 1).append(refPosPathWithTrailingDot + ReferencePosition.FIELDNAME_START_SITE, 1);
+        try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, projectionAndSortDoc, nQueryChunkSize)) {
             progress.addStep("Writing map file");
             progress.moveToNextStep();
             while (markerCursor.hasNext()) {
@@ -193,7 +195,9 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
    		os.write(("# fjFile = GENOTYPE" + LINE_SEPARATOR).getBytes());
         
    		boolean fWorkingOnRuns = varColl.getNamespace().getCollectionName().equals(MongoTemplateManager.getMongoCollectionName(VariantRunData.class));
-   		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, nAssemblyId, nQueryChunkSize)) {
+    	String refPosPathWithTrailingDot = Assembly.getThreadBoundVariantRefPosPath() + ".";
+    	Document projectionAndSortDoc = new Document(refPosPathWithTrailingDot + ReferencePosition.FIELDNAME_SEQUENCE, 1).append(refPosPathWithTrailingDot + ReferencePosition.FIELDNAME_START_SITE, 1);
+   		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(varColl, varQuery, projectionAndSortDoc, nQueryChunkSize)) {
 	        while (markerCursor.hasNext()) {
 	            Document exportVariant = markerCursor.next();
 	            String markerId = (String) (fWorkingOnRuns ? Helper.readPossiblyNestedField(exportVariant, "_id." + VariantRunDataId.FIELDNAME_VARIANT_ID, ";", null) : exportVariant.get("_id"));
