@@ -40,12 +40,18 @@ import java.util.zip.ZipOutputStream;
 import org.apache.log4j.Logger;
 import org.bson.Document;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
 
 import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
 
 import fr.cirad.mgdb.exporting.IExportHandler;
 import fr.cirad.mgdb.exporting.tools.ExportManager;
+import fr.cirad.mgdb.model.mongo.maintypes.Assembly;
+import fr.cirad.mgdb.model.mongo.maintypes.VariantData;
 import fr.cirad.mgdb.model.mongo.maintypes.VariantRunData;
+import fr.cirad.mgdb.model.mongo.subtypes.ReferencePosition;
 import fr.cirad.tools.Helper;
 import fr.cirad.tools.ProgressIndicator;
 import fr.cirad.tools.mongo.MongoTemplateManager;
@@ -84,7 +90,7 @@ public class FastaPseudoAlignmentExportHandler extends AbstractIndividualOriente
      */
     @Override
     public String getExportFormatDescription() {
-    	return "Exports a zipped FASTA file containing a pseudo-alignment consisting in the concatenation of SNP alleles. Compatible with phylogenetic tree construction tools like FastTree";
+    	return "Exports a zipped FASTA file containing a pseudo-alignment consisting in the concatenation of SNP alleles, compatible with phylogenetic tree construction tools like FastTree. An additional PLINK-style map file is added for reference.";
     }
 
 	/* (non-Javadoc)
@@ -101,14 +107,15 @@ public class FastaPseudoAlignmentExportHandler extends AbstractIndividualOriente
 	}
 
     @Override
-    public void exportData(OutputStream outputStream, String sModule, String sExportingUser, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
+    public void exportData(OutputStream outputStream, String sModule, Integer nAssemblyId, String sExportingUser, File[] individualExportFiles, boolean fDeleteSampleExportFilesOnExit, ProgressIndicator progress, String tmpVarCollName, Document varQuery, long markerCount, Map<String, String> markerSynonyms, Collection<String> individualMetadataFieldsToExport, Map<String, InputStream> readyToExportFiles) throws Exception {
 		MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         int nQueryChunkSize = IExportHandler.computeQueryChunkSize(mongoTemplate, markerCount);
         File warningFile = File.createTempFile("export_warnings_", "");
         FileWriter warningFileWriter = new FileWriter(warningFile);
         ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
 		MongoCollection collWithPojoCodec = mongoTemplate.getDb().withCodecRegistry(ExportManager.pojoCodecRegistry).getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantRunData.class));
-        String exportName = sModule + "__" + markerCount + "variants__" + individualExportFiles.length + "individuals";
+		Assembly assembly = mongoTemplate.findOne(new Query(Criteria.where("_id").is(nAssemblyId)), Assembly.class);
+		String exportName = sModule + (assembly != null ? "__" + assembly.getName() : "") + "__" + markerCount + "variants__" + individualExportFiles.length + "individuals";
         
         ArrayList<String> exportedIndividuals = new ArrayList<>();
         for (File indFile : individualExportFiles)
@@ -124,9 +131,35 @@ public class FastaPseudoAlignmentExportHandler extends AbstractIndividualOriente
         }
         
         zos.putNextEntry(new ZipEntry(exportName + "." + getExportDataFileExtensions()[0]));
-        zos.write(getHeaderline(individualExportFiles.length, (int) markerCount).getBytes());
+        zos.write(getHeaderlines(individualExportFiles.length, (int) markerCount).getBytes());
         TreeMap<Integer, Comparable> problematicMarkerIndexToNameMap = writeGenotypeFile(zos, sModule, exportedIndividuals, nQueryChunkSize, null, varQuery, markerSynonyms, individualExportFiles, warningFileWriter, progress);
+        zos.write(getFooterlines().getBytes());
     	zos.closeEntry();
+    	
+        zos.putNextEntry(new ZipEntry(exportName + ".map"));
+        String refPosPath = Assembly.getVariantRefPosPath(nAssemblyId);
+        int nMarkerIndex = 0;
+        ArrayList<Comparable> unassignedMarkers = new ArrayList<>();
+    	String refPosPathWithTrailingDot = Assembly.getThreadBoundVariantRefPosPath() + ".";
+    	Document projectionAndSortDoc = new Document(refPosPathWithTrailingDot + ReferencePosition.FIELDNAME_SEQUENCE, 1).append(refPosPathWithTrailingDot + ReferencePosition.FIELDNAME_START_SITE, 1);
+		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(mongoTemplate.getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class)), varQuery, projectionAndSortDoc, nQueryChunkSize)) {
+            progress.addStep("Writing map file");
+            progress.moveToNextStep();
+	        while (markerCursor.hasNext()) {
+	            Document exportVariant = markerCursor.next();
+	            Document refPos = (Document) Helper.readPossiblyNestedField(exportVariant, refPosPath, ";", null);
+	            Long pos = refPos == null ? null : ((Number) refPos.get(ReferencePosition.FIELDNAME_START_SITE)).longValue();
+	            String chrom = refPos == null ? null : (String) refPos.get(ReferencePosition.FIELDNAME_SEQUENCE);
+                String markerId = (String) exportVariant.get("_id");
+	            if (chrom == null)
+	            	unassignedMarkers.add(markerId);
+	            String exportedId = markerSynonyms == null ? markerId : markerSynonyms.get(markerId);
+	            zos.write(((chrom == null ? "0" : chrom) + " " + exportedId + " " + 0 + " " + (pos == null ? 0 : pos) + LINE_SEPARATOR).getBytes());
+
+                progress.setCurrentStepProgress(nMarkerIndex++ * 100 / markerCount);
+	        }
+		}
+        zos.closeEntry();
 
         if (warningFile.length() > 0) {
             progress.addStep("Adding lines to warning file");
@@ -232,8 +265,8 @@ public class FastaPseudoAlignmentExportHandler extends AbstractIndividualOriente
 			                        problematicMarkerIndexToNameMap.put(nMarkerIndex, "");
 			                    }
 			
-			                    String all1 = alleles.length == 0 ? "-" : alleles[0];
-			                    String all2 = alleles.length == 0 ? "-" : alleles[alleles.length == 1 ? 0 : 1];
+			                    String all1 = alleles.length == 0 ? getMissingAlleleString() : alleles[0];
+			                    String all2 = alleles.length == 0 ? getMissingAlleleString() : alleles[alleles.length == 1 ? 0 : 1];
 		                        indLine.append(all1).append(all2);
 			
 			                    nMarkerIndex++;
@@ -294,6 +327,10 @@ public class FastaPseudoAlignmentExportHandler extends AbstractIndividualOriente
         return problematicMarkerIndexToNameMap;
     }
 
+    protected String getMissingAlleleString() {
+		return "N";
+	}
+    
     protected String getLinePrefix() {
 		return ">";
 	}
@@ -302,10 +339,14 @@ public class FastaPseudoAlignmentExportHandler extends AbstractIndividualOriente
 		return "\n";
 	}
     
-    protected String getHeaderline(int nIndividualCount, int nMarkerCount) {
+    protected String getHeaderlines(int nIndividualCount, int nMarkerCount) {
 		return "";
 	}
 
+	protected String getFooterlines() {
+		return "";
+	}
+	
 	/* (non-Javadoc)
 	 * @see fr.cirad.mgdb.exporting.IExportHandler#getStepList()
      */

@@ -27,12 +27,12 @@ import htsjdk.variant.variantcontext.VariantContext.Type;
 /**
  * The Class NexusPseudoAlignmentExportHandler.
  */
-public class PhylipPseudoAlignmentExportHandler extends FastaPseudoAlignmentExportHandler {
+public class NexusPseudoAlignmentExportHandler extends PhylipPseudoAlignmentExportHandler {
 
     /**
      * The Constant LOG.
      */
-    private static final Logger LOG = Logger.getLogger(PhylipPseudoAlignmentExportHandler.class);
+    private static final Logger LOG = Logger.getLogger(NexusPseudoAlignmentExportHandler.class);
 
     /**
      * The supported variant types.
@@ -49,7 +49,7 @@ public class PhylipPseudoAlignmentExportHandler extends FastaPseudoAlignmentExpo
      */
     @Override
     public String getExportFormatName() {
-        return "PHYLIP";
+        return "NEXUS";
     }
 
     /* (non-Javadoc)
@@ -57,7 +57,7 @@ public class PhylipPseudoAlignmentExportHandler extends FastaPseudoAlignmentExpo
      */
     @Override
     public String getExportFormatDescription() {
-    	return "Exports a zipped sequential PHYLIP file containing a pseudo-alignment consisting in the concatenation of SNP alleles, compatible with phylogenetic tree construction tools like FastME. An additional PLINK-style map file is added for reference.";
+    	return "Exports a zipped NEXUS file containing a pseudo-alignment consisting in the concatenation of SNP alleles, compatible with phylogenetic tree construction tools like MUSCLE. An additional PLINK-style map file is added for reference.";
     }
 
 	/* (non-Javadoc)
@@ -90,7 +90,12 @@ public class PhylipPseudoAlignmentExportHandler extends FastaPseudoAlignmentExpo
     
     @Override
     protected String getHeaderlines(int nIndividualCount, int nMarkerCount) {
-		return nIndividualCount + " " + nMarkerCount*2 + "\n";
+    	return "#NEXUS\nbegin data;\ndimensions ntax=" + nIndividualCount + " nchar=" + 2*nMarkerCount + ";\nformat datatype=dna missing=? gap=-;\nmatrix\n";
+	}
+
+    @Override
+    protected String getFooterlines() {
+    	return ";\nend;";
 	}
 
     /* (non-Javadoc)
@@ -98,12 +103,12 @@ public class PhylipPseudoAlignmentExportHandler extends FastaPseudoAlignmentExpo
      */
     @Override
     public List<String> getStepList() {
-        return Arrays.asList(new String[]{"Exporting data to PHYLIP format"});
+        return Arrays.asList(new String[]{"Exporting data to NEXUS format"});
     }
 
 	@Override
 	public String[] getExportDataFileExtensions() {
-		return new String[] {"phy"};
+		return new String[] {"nxs"};
 	}
 
     @Override

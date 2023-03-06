@@ -161,7 +161,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 	    	zos.closeEntry();
         }
         
-        String assemblyPrefix = nAssemblyId == null ? "" : (nAssemblyId + ".");
+        String refPosPathWithTrailingDot = Assembly.getVariantRefPosPath(nAssemblyId) + ".";
         
     	VariantContextWriter writer = null;		
 		try {
@@ -183,7 +183,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
 //						}
 //					}
 //					else {
-					for (Object chr : mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantData.class)).distinct(VariantData.FIELDNAME_REFERENCE_POSITION + "." + assemblyPrefix + ReferencePosition.FIELDNAME_SEQUENCE, varQuery, String.class))	// find out distinctSequenceNames by looking at exported variant list
+					for (Object chr : mongoTemplate.getCollection(mongoTemplate.getCollectionName(VariantData.class)).distinct(refPosPathWithTrailingDot + ReferencePosition.FIELDNAME_SEQUENCE, varQuery, String.class))	// find out distinctSequenceNames by looking at exported variant list
 						if (chr != null)
 							distinctSequenceNames.add(chr.toString());
 //					}

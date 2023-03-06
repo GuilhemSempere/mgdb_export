@@ -142,12 +142,12 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
     	zos.closeEntry();
 
         zos.putNextEntry(new ZipEntry(exportName + ".map"));
-        String refPosPath = AbstractVariantData.FIELDNAME_REFERENCE_POSITION + (nAssemblyId != null ? "." + nAssemblyId : "");
-
+        String refPosPath = Assembly.getVariantRefPosPath(nAssemblyId);
         int nMarkerIndex = 0;
         ArrayList<Comparable> unassignedMarkers = new ArrayList<>();
-
-		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(mongoTemplate.getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class)), varQuery, nAssemblyId, nQueryChunkSize)) {
+    	String refPosPathWithTrailingDot = Assembly.getThreadBoundVariantRefPosPath() + ".";
+    	Document projectionAndSortDoc = new Document(refPosPathWithTrailingDot + ReferencePosition.FIELDNAME_SEQUENCE, 1).append(refPosPathWithTrailingDot + ReferencePosition.FIELDNAME_START_SITE, 1);
+		try (MongoCursor<Document> markerCursor = IExportHandler.getMarkerCursorWithCorrectCollation(mongoTemplate.getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class)), varQuery, projectionAndSortDoc, nQueryChunkSize)) {
             progress.addStep("Writing map file");
             progress.moveToNextStep();
 	        while (markerCursor.hasNext()) {
@@ -160,16 +160,7 @@ public class PLinkExportHandler extends AbstractIndividualOrientedExportHandler 
 	            	unassignedMarkers.add(markerId);
 	            String exportedId = markerSynonyms == null ? markerId : markerSynonyms.get(markerId);
 	            zos.write(((chrom == null ? "0" : chrom) + " " + exportedId + " " + 0 + " " + (pos == null ? 0 : pos) + LINE_SEPARATOR).getBytes());
-	
-//	            if (problematicMarkerIndexToNameMap.containsKey(nMarkerIndex)) {	// we are going to need this marker's name for the warning file
-//	            	String variantName = markerId;
-//	                if (markerSynonyms != null) {
-//	                	String syn = markerSynonyms.get(markerId);
-//	                    if (syn != null)
-//	                        variantName = syn;
-//	                }
-//	                problematicMarkerIndexToNameMap.put(nMarkerIndex, variantName);
-//	            }
+
                 progress.setCurrentStepProgress(nMarkerIndex++ * 100 / markerCount);
 	        }
 		}
