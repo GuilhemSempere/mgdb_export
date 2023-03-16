@@ -173,7 +173,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 
 		                boolean fIsSNP = variant.getType().equals(Type.SNP.toString());
 		                ReferencePosition rp = variant.getReferencePosition(nAssemblyId);
-						sb.append(idOfVarToWrite).append("\t").append(StringUtils.join(variant.getKnownAlleles(), "/") + "\t" + (rp == null ? 0 : rp.getSequence()) + "\t" + (rp == null ? 0 : rp.getStartSite()) + "\t" + "+\t" + assembly.getName() + "\tNA\tNA\tNA\tNA\tNA");
+						sb.append(idOfVarToWrite).append("\t").append(StringUtils.join(variant.getKnownAlleles(), "/") + "\t" + (rp == null ? 0 : rp.getSequence()) + "\t" + (rp == null ? 0 : rp.getStartSite()) + "\t" + "+\t" + (assembly == null ? "NA" : assembly.getName()) + "\tNA\tNA\tNA\tNA\tNA");
 
 		                LinkedHashSet<String>[] individualGenotypes = new LinkedHashSet[individualPositions.size()];
 
@@ -257,7 +257,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
 					catch (Exception e)
 					{
 						if (progress.getError() == null)	// only log this once
-							LOG.debug("Unable to export " + idOfVarToWrite, e);
+							LOG.error("Unable to export " + idOfVarToWrite, e);
 						progress.setError("Unable to export " + idOfVarToWrite + ": " + e.getMessage());
 					}
 				});

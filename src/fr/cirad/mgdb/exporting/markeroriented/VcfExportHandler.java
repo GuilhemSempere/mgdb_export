@@ -346,7 +346,7 @@ public class VcfExportHandler extends AbstractMarkerOrientedExportHandler {
             					catch (Exception e)
             					{
             						if (progress.getError() == null)	// only log this once
-            							LOG.debug("Unable to export " + idOfVarToWrite, e);
+            							LOG.error("Unable to export " + idOfVarToWrite, e);
             						progress.setError("Unable to export " + idOfVarToWrite + ": " + e.getMessage());
             					}
 		                    }
