@@ -2,11 +2,11 @@
     <modelVersion>4.0.0</modelVersion>
     
     <properties>
-	    <project.version>2.6-SNAPSHOT</project.version>
-	    <mgdb.version>2.6-SNAPSHOT</mgdb.version>
+	    <project.version>2.6-beta</project.version>
+	    <mgdb.version>2.6-beta</mgdb.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
     </properties>
     
     <groupId>fr.cirad</groupId>
