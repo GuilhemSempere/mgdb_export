@@ -57,7 +57,7 @@ public class PhylipPseudoAlignmentExportHandler extends FastaPseudoAlignmentExpo
      */
     @Override
     public String getExportFormatDescription() {
-    	return "Exports a zipped sequential PHYLIP file containing a pseudo-alignment consisting in the concatenation of SNP alleles, compatible with phylogenetic tree construction tools like FastME. An additional PLINK-style map file is added for reference.";
+    	return "Exports a zipped sequential PHYLIP file containing a pseudo-alignment consisting in the concatenation of SNP alleles, compatible with tree construction tools like FastME. An additional PLINK-style map file is added for reference.";
     }
 
 	/* (non-Javadoc)
