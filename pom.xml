@@ -2,17 +2,18 @@
     <modelVersion>4.0.0</modelVersion>
     
     <properties>
-	    <project.version>2.5.2-alpha</project.version>
-	    <mgdb.version>2.5.2-alpha</mgdb.version>
+	    <project.version>2.6-beta</project.version>
+	    <mgdb.version>2.6-beta</mgdb.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
     </properties>
     
     <groupId>fr.cirad</groupId>
     <artifactId>mgdb2_export</artifactId>
     <version>${project.version}</version>
-
+    <packaging>jar</packaging>
+    
     <dependencies>
         <dependency>
             <groupId>fr.cirad</groupId>
@@ -20,15 +21,14 @@
             <version>${mgdb.version}</version>
         </dependency>
     </dependencies>
+
     <build>
-        <sourceDirectory>src</sourceDirectory>
         <plugins>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.1</version>
+                <version>2.3.2</version>
                 <configuration>
-                    <source/>
-                    <target/>
                     <encoding>${project.build.sourceEncoding}</encoding>
                 </configuration>
             </plugin>
@@ -41,6 +41,7 @@
                 </configuration>
             </plugin>
         </plugins>
+        <sourceDirectory>${project.basedir}/src</sourceDirectory>
     </build>
    
 </project>
