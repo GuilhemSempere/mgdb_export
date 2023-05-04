@@ -99,7 +99,7 @@ public class FlapjackExportHandler extends AbstractIndividualOrientedExportHandl
         MongoTemplate mongoTemplate = MongoTemplateManager.get(sModule);
         
         Assembly assembly = mongoTemplate.findOne(new Query(Criteria.where("_id").is(nAssemblyId)), Assembly.class);
-        String exportName = sModule + (assembly != null ? "__" + assembly.getName() : "") + "__" + markerCount + "variants__" + individualExportFiles.length + "individuals";
+        String exportName = sModule + (assembly != null && assembly.getName() != null ? "__" + assembly.getName() : "") + "__" + markerCount + "variants__" + individualExportFiles.length + "individuals";
         int nQueryChunkSize = IExportHandler.computeQueryChunkSize(mongoTemplate, markerCount);
 
         MongoCollection<Document> varColl = mongoTemplate.getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantData.class));

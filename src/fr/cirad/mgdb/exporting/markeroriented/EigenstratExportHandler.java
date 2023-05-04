@@ -169,7 +169,7 @@ public class EigenstratExportHandler extends AbstractMarkerOrientedExportHandler
     			individualPositions.put(ind, individualPositions.size());
  
     		Assembly assembly = mongoTemplate.findOne(new Query(Criteria.where("_id").is(nAssemblyId)), Assembly.class);
-            String exportName = sModule + (assembly != null ? "__" + assembly.getName() : "") + "__" + markerCount + "variants__" + individualPositions.size() + "individuals";
+            String exportName = sModule + (assembly != null && assembly.getName() != null ? "__" + assembly.getName() : "") + "__" + markerCount + "variants__" + individualPositions.size() + "individuals";
             
             if (individualMetadataFieldsToExport != null && !individualMetadataFieldsToExport.isEmpty()) {
             	zos.putNextEntry(new ZipEntry(sModule + "__" + individualPositions.size() + "individuals_metadata.tsv"));

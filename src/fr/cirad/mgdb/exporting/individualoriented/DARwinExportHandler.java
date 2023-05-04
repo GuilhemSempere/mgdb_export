@@ -112,7 +112,7 @@ public class DARwinExportHandler extends AbstractIndividualOrientedExportHandler
 
         ZipOutputStream os = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
 		Assembly assembly = mongoTemplate.findOne(new Query(Criteria.where("_id").is(nAssemblyId)), Assembly.class);
-		String exportName = sModule + (assembly != null ? "__" + assembly.getName() : "") + "__" + markerCount + "variants__" + individualExportFiles.length + "individuals";
+		String exportName = sModule + (assembly != null && assembly.getName() != null ? "__" + assembly.getName() : "") + "__" + markerCount + "variants__" + individualExportFiles.length + "individuals";
         
         String missingGenotype = "";
         for (int j = 0; j < ploidy; j++)

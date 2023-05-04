@@ -129,7 +129,7 @@ public class HapMapExportHandler extends AbstractMarkerOrientedExportHandler {
         ZipOutputStream zos = IExportHandler.createArchiveOutputStream(outputStream, readyToExportFiles);
 		MongoCollection collWithPojoCodec = mongoTemplate.getDb().withCodecRegistry(ExportManager.pojoCodecRegistry).getCollection(tmpVarCollName != null ? tmpVarCollName : mongoTemplate.getCollectionName(VariantRunData.class));
         Assembly assembly = mongoTemplate.findOne(new Query(Criteria.where("_id").is(nAssemblyId)), Assembly.class);
-        String exportName = sModule + (assembly != null ? "__" + assembly.getName() : "") + "__" + markerCount + "variants__" + individualPositions.size() + "individuals";
+        String exportName = sModule + (assembly != null && assembly.getName() != null ? "__" + assembly.getName() : "") + "__" + markerCount + "variants__" + individualPositions.size() + "individuals";
 
         if (individualMetadataFieldsToExport != null && !individualMetadataFieldsToExport.isEmpty()) {
         	zos.putNextEntry(new ZipEntry(sModule + (assembly != null ? "__" + assembly.getName() : "") + "__" + individualPositions.size()+ "individuals_metadata.tsv"));
