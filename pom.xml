@@ -14,6 +14,13 @@
     <version>${project.version}</version>
     <packaging>jar</packaging>
     
+    <parent>
+        <groupId>fr.cirad</groupId>
+        <artifactId>gigwa-bom</artifactId>
+        <version>1.0-SNAPSHOT</version>
+        <relativePath>../gigwa-bom/pom.xml</relativePath>
+    </parent>
+    
     <dependencies>
         <dependency>
             <groupId>fr.cirad</groupId>
